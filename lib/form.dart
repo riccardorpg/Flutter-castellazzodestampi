@@ -119,10 +119,15 @@ class _FormScreenState extends State<FormScreen> {
 
       // Se non disponibile, acquisisce con precisione media (più veloce)
       pos ??= await Geolocator.getCurrentPosition(
-        locationSettings: AndroidSettings(
-          accuracy: LocationAccuracy.medium,
-          timeLimit: const Duration(seconds: 15),
-        ),
+        locationSettings: Platform.isAndroid
+            ? AndroidSettings(
+                accuracy: LocationAccuracy.medium,
+                timeLimit: const Duration(seconds: 15),
+              )
+            : AppleSettings(
+                accuracy: LocationAccuracy.medium,
+                timeLimit: const Duration(seconds: 15),
+              ),
       );
 
       if (!mounted) return;
@@ -156,6 +161,7 @@ class _FormScreenState extends State<FormScreen> {
         'lon': '$lon',
         'format': 'json',
         'addressdetails': '1',
+        'zoom': '18',
         'accept-language': 'it',
       });
       final res = await http
@@ -165,11 +171,11 @@ class _FormScreenState extends State<FormScreen> {
       if (res.statusCode == 200) {
         final data = jsonDecode(res.body) as Map<String, dynamic>;
         final addr = data['address'] as Map<String, dynamic>? ?? {};
-        final road   = addr['road'] ?? addr['pedestrian'] ?? addr['footway'] ?? '';
-        final number = addr['house_number'] ?? '';
-        final city   = addr['city'] ?? addr['town'] ?? addr['village'] ?? addr['municipality'] ?? '';
+        final road   = addr['road'] ?? addr['pedestrian'] ?? addr['footway'] ?? addr['path'] ?? '';
+        final number = addr['house_number']?.toString() ?? '';
+        final city   = addr['city'] ?? addr['town'] ?? addr['village'] ?? addr['municipality'] ?? addr['suburb'] ?? '';
         final parts  = <String>[
-          if (road.isNotEmpty) (number.isNotEmpty ? '$road, $number' : road),
+          if (road.isNotEmpty) (number.isNotEmpty ? '$road $number' : road),
           if (city.isNotEmpty) city,
         ];
         final display = parts.isNotEmpty ? parts.join(', ') : (data['display_name'] as String? ?? '');
