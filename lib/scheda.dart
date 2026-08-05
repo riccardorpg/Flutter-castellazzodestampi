@@ -5,12 +5,27 @@ class SchedaScreen extends StatelessWidget {
   final Map<String, dynamic> report;
   const SchedaScreen({super.key, required this.report});
 
+  static const _imageExtensions = [
+    '.jpg',
+    '.jpeg',
+    '.png',
+    '.gif',
+    '.webp',
+    '.bmp',
+    '.heic',
+  ];
+
   List<Map<String, dynamic>> get _images {
     final attachments = report['attachments'] as List? ?? [];
     return List<Map<String, dynamic>>.from(
       attachments.where((a) {
+        if (a is! Map) return false;
+        final path = (a['file_path'] as String? ?? '').trim();
+        if (path.isEmpty) return false;
         final ft = (a['file_type'] as String? ?? '').toLowerCase();
-        return ft.startsWith('image/');
+        if (ft.startsWith('image/')) return true;
+        final lower = path.toLowerCase();
+        return _imageExtensions.any(lower.endsWith);
       }),
     );
   }
@@ -34,8 +49,11 @@ class SchedaScreen extends StatelessWidget {
         elevation: 0,
         centerTitle: true,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios_new,
-              color: Color(0xFF111111), size: 18),
+          icon: const Icon(
+            Icons.arrow_back_ios_new,
+            color: Color(0xFF111111),
+            size: 18,
+          ),
           onPressed: () => Navigator.pop(context),
         ),
         title: const Text(
@@ -56,8 +74,7 @@ class SchedaScreen extends StatelessWidget {
             // ── Banner stato ──────────────────────────────────────
             Container(
               width: double.infinity,
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
               decoration: BoxDecoration(
                 color: color.withValues(alpha: 0.10),
                 borderRadius: BorderRadius.circular(12),
@@ -118,8 +135,11 @@ class SchedaScreen extends StatelessWidget {
               const SizedBox(height: 8),
               Row(
                 children: [
-                  const Icon(Icons.location_on_outlined,
-                      size: 16, color: Color(0xFF7BA566)),
+                  const Icon(
+                    Icons.location_on_outlined,
+                    size: 16,
+                    color: Color(0xFF7BA566),
+                  ),
                   const SizedBox(width: 6),
                   Expanded(
                     child: Text(
@@ -142,8 +162,11 @@ class SchedaScreen extends StatelessWidget {
               const SizedBox(height: 6),
               Row(
                 children: [
-                  const Icon(Icons.calendar_today_outlined,
-                      size: 14, color: Color(0xFF9CA3AF)),
+                  const Icon(
+                    Icons.calendar_today_outlined,
+                    size: 14,
+                    color: Color(0xFF9CA3AF),
+                  ),
                   const SizedBox(width: 4),
                   Text(
                     _formatDate(datetime),
@@ -172,15 +195,15 @@ class SchedaScreen extends StatelessWidget {
   }
 
   static Widget _label(String text) => Text(
-        text,
-        style: const TextStyle(
-          color: Color(0xFF9CA3AF),
-          fontSize: 11,
-          fontFamily: 'Inter',
-          fontWeight: FontWeight.w600,
-          letterSpacing: 0.5,
-        ),
-      );
+    text,
+    style: const TextStyle(
+      color: Color(0xFF9CA3AF),
+      fontSize: 11,
+      fontFamily: 'Inter',
+      fontWeight: FontWeight.w600,
+      letterSpacing: 0.5,
+    ),
+  );
 
   static Color _statusColor(String status) {
     switch (status) {
@@ -259,8 +282,10 @@ class _ImageGrid extends StatelessWidget {
                   color: const Color(0xFFF3F4F6),
                   borderRadius: BorderRadius.circular(8),
                 ),
-                child: const Icon(Icons.broken_image_outlined,
-                    color: Color(0xFF9CA3AF)),
+                child: const Icon(
+                  Icons.broken_image_outlined,
+                  color: Color(0xFF9CA3AF),
+                ),
               ),
             ),
           ),
@@ -289,8 +314,7 @@ class _FullscreenGallery extends StatefulWidget {
   final List<String> urls;
   final int initialIndex;
 
-  const _FullscreenGallery(
-      {required this.urls, required this.initialIndex});
+  const _FullscreenGallery({required this.urls, required this.initialIndex});
 
   @override
   State<_FullscreenGallery> createState() => _FullscreenGalleryState();

@@ -51,14 +51,20 @@ class _SegnalazioniScreenState extends State<SegnalazioniScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF5F5F5),
+      // Sfondo bianco uniforme: appbar, barra filtri, lista e barra
+      // inferiore hanno tutti lo stesso colore.
+      backgroundColor: Colors.white,
       appBar: AppBar(
         backgroundColor: Colors.white,
         elevation: 0,
         centerTitle: true,
+        leadingWidth: 72,
         leading: Padding(
-          padding: const EdgeInsets.all(8),
-          child: Image.asset('android/app/src/main/res/drawable/logo.png'),
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+          child: Image.asset(
+            'android/app/src/main/res/drawable/logo.png',
+            fit: BoxFit.contain,
+          ),
         ),
         title: const Text(
           'Le mie segnalazioni',
@@ -73,44 +79,41 @@ class _SegnalazioniScreenState extends State<SegnalazioniScreen> {
       body: Column(
         children: [
           // ── Filtri ────────────────────────────────────────────
-          Container(
-            color: Colors.white,
-            child: SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-              child: Row(
-                children: [
-                  _FilterChip(
-                    label: 'Tutte',
-                    selected: _filter == 'all',
-                    onTap: () => setState(() => _filter = 'all'),
-                  ),
-                  const SizedBox(width: 8),
-                  _FilterChip(
-                    label: 'In attesa',
-                    selected: _filter == 'pending',
-                    onTap: () => setState(() => _filter = 'pending'),
-                  ),
-                  const SizedBox(width: 8),
-                  _FilterChip(
-                    label: 'In lavorazione',
-                    selected: _filter == 'in_progress',
-                    onTap: () => setState(() => _filter = 'in_progress'),
-                  ),
-                  const SizedBox(width: 8),
-                  _FilterChip(
-                    label: 'Risolte',
-                    selected: _filter == 'resolved',
-                    onTap: () => setState(() => _filter = 'resolved'),
-                  ),
-                  const SizedBox(width: 8),
-                  _FilterChip(
-                    label: 'Rifiutate',
-                    selected: _filter == 'rejected',
-                    onTap: () => setState(() => _filter = 'rejected'),
-                  ),
-                ],
-              ),
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+            child: Row(
+              children: [
+                _FilterChip(
+                  label: 'Tutte',
+                  selected: _filter == 'all',
+                  onTap: () => setState(() => _filter = 'all'),
+                ),
+                const SizedBox(width: 8),
+                _FilterChip(
+                  label: 'In attesa',
+                  selected: _filter == 'pending',
+                  onTap: () => setState(() => _filter = 'pending'),
+                ),
+                const SizedBox(width: 8),
+                _FilterChip(
+                  label: 'In lavorazione',
+                  selected: _filter == 'in_progress',
+                  onTap: () => setState(() => _filter = 'in_progress'),
+                ),
+                const SizedBox(width: 8),
+                _FilterChip(
+                  label: 'Risolte',
+                  selected: _filter == 'resolved',
+                  onTap: () => setState(() => _filter = 'resolved'),
+                ),
+                const SizedBox(width: 8),
+                _FilterChip(
+                  label: 'Rifiutate',
+                  selected: _filter == 'rejected',
+                  onTap: () => setState(() => _filter = 'rejected'),
+                ),
+              ],
             ),
           ),
           // ── Lista ─────────────────────────────────────────────
@@ -128,7 +131,11 @@ class _SegnalazioniScreenState extends State<SegnalazioniScreen> {
           child: const Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(Icons.add_circle_outline, color: Color(0xFF666666), size: 22),
+              Icon(
+                Icons.add_circle_outline,
+                color: Color(0xFF666666),
+                size: 22,
+              ),
               SizedBox(width: 10),
               Text(
                 'Nuova',
@@ -149,7 +156,8 @@ class _SegnalazioniScreenState extends State<SegnalazioniScreen> {
   Widget _buildBody() {
     if (_loading) {
       return const Center(
-          child: CircularProgressIndicator(color: Color(0xFF7BA566)));
+        child: CircularProgressIndicator(color: Color(0xFF7BA566)),
+      );
     }
     final list = _filtered;
     if (list.isEmpty) {
@@ -157,8 +165,11 @@ class _SegnalazioniScreenState extends State<SegnalazioniScreen> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.inbox_outlined,
-                size: 64, color: Colors.grey.withValues(alpha: 0.4)),
+            Icon(
+              Icons.inbox_outlined,
+              size: 64,
+              color: Colors.grey.withValues(alpha: 0.4),
+            ),
             const SizedBox(height: 12),
             const Text(
               'Nessuna segnalazione in questa categoria.',
@@ -189,13 +200,13 @@ class _ReportCard extends StatelessWidget {
   static Color statusColor(String status) {
     switch (status) {
       case 'pending':
-        return const Color(0xFFF59E0B);   // giallo
+        return const Color(0xFFF59E0B); // giallo
       case 'in_progress':
-        return const Color(0xFF38BDF8);   // azzurro
+        return const Color(0xFF38BDF8); // azzurro
       case 'resolved':
-        return const Color(0xFF7BA566);   // verde
+        return const Color(0xFF7BA566); // verde
       case 'rejected':
-        return const Color(0xFFEF4444);   // rosso
+        return const Color(0xFFEF4444); // rosso
       default:
         return const Color(0xFF9CA3AF);
     }
@@ -232,7 +243,9 @@ class _ReportCard extends StatelessWidget {
         decoration: BoxDecoration(
           color: Colors.white,
           borderRadius: BorderRadius.circular(14),
-          border: Border(left: BorderSide(color: color, width: 4)),
+          // Bordo chiaro uniforme: su sfondo bianco la card resta
+          // comunque distinguibile.
+          border: Border.all(color: const Color(0xFFE5E7EB)),
           boxShadow: [
             BoxShadow(
               color: Colors.black.withValues(alpha: 0.05),
@@ -241,84 +254,110 @@ class _ReportCard extends StatelessWidget {
             ),
           ],
         ),
-        child: Padding(
-          padding: const EdgeInsets.all(14),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      typeName,
-                      style: const TextStyle(
-                        color: Color(0xFF111111),
-                        fontSize: 15,
-                        fontFamily: 'Inter',
-                        fontWeight: FontWeight.w600,
-                      ),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(13),
+          child: IntrinsicHeight(
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                // Barra colorata di stato
+                Container(width: 4, color: color),
+                Expanded(
+                  child: Padding(
+                    padding: const EdgeInsets.all(14),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Expanded(
+                              child: Text(
+                                typeName,
+                                style: const TextStyle(
+                                  color: Color(0xFF111111),
+                                  fontSize: 15,
+                                  fontFamily: 'Inter',
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ),
+                            // Badge stato
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 8,
+                                vertical: 3,
+                              ),
+                              decoration: BoxDecoration(
+                                color: color.withValues(alpha: 0.12),
+                                borderRadius: BorderRadius.circular(20),
+                                border: Border.all(
+                                  color: color.withValues(alpha: 0.4),
+                                ),
+                              ),
+                              child: Text(
+                                statusLabel.toUpperCase(),
+                                style: TextStyle(
+                                  color: color,
+                                  fontSize: 10,
+                                  fontFamily: 'Inter',
+                                  fontWeight: FontWeight.w700,
+                                  letterSpacing: 0.5,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                        if (address.isNotEmpty) ...[
+                          const SizedBox(height: 4),
+                          Row(
+                            children: [
+                              const Icon(
+                                Icons.location_on_outlined,
+                                size: 12,
+                                color: Color(0xFF9CA3AF),
+                              ),
+                              const SizedBox(width: 3),
+                              Expanded(
+                                child: Text(
+                                  address,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(
+                                    color: Color(0xFF9CA3AF),
+                                    fontSize: 12,
+                                    fontFamily: 'Inter',
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                        const SizedBox(height: 8),
+                        Row(
+                          children: [
+                            const Icon(
+                              Icons.calendar_today_outlined,
+                              size: 12,
+                              color: Color(0xFF9CA3AF),
+                            ),
+                            const SizedBox(width: 4),
+                            Text(
+                              _formatDate(datetime),
+                              style: const TextStyle(
+                                color: Color(0xFF9CA3AF),
+                                fontSize: 11,
+                                fontFamily: 'Inter',
+                              ),
+                            ),
+                            const Spacer(),
+                          ],
+                        ),
+                      ],
                     ),
                   ),
-                  // Badge stato
-                  Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                    decoration: BoxDecoration(
-                      color: color.withValues(alpha: 0.12),
-                      borderRadius: BorderRadius.circular(20),
-                      border: Border.all(color: color.withValues(alpha: 0.4)),
-                    ),
-                    child: Text(
-                      statusLabel.toUpperCase(),
-                      style: TextStyle(
-                        color: color,
-                        fontSize: 10,
-                        fontFamily: 'Inter',
-                        fontWeight: FontWeight.w700,
-                        letterSpacing: 0.5,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              if (address.isNotEmpty) ...[
-                const SizedBox(height: 4),
-                Row(
-                  children: [
-                    const Icon(Icons.location_on_outlined,
-                        size: 12, color: Color(0xFF9CA3AF)),
-                    const SizedBox(width: 3),
-                    Expanded(
-                      child: Text(
-                        address,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                            color: Color(0xFF9CA3AF),
-                            fontSize: 12,
-                            fontFamily: 'Inter'),
-                      ),
-                    ),
-                  ],
                 ),
               ],
-              const SizedBox(height: 8),
-              Row(
-                children: [
-                  const Icon(Icons.calendar_today_outlined,
-                      size: 12, color: Color(0xFF9CA3AF)),
-                  const SizedBox(width: 4),
-                  Text(
-                    _formatDate(datetime),
-                    style: const TextStyle(
-                        color: Color(0xFF9CA3AF),
-                        fontSize: 11,
-                        fontFamily: 'Inter'),
-                  ),
-                  const Spacer(),
-                ],
-              ),
-            ],
+            ),
           ),
         ),
       ),
@@ -346,11 +385,9 @@ class _FilterChip extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
         decoration: BoxDecoration(
-          color: selected ? const Color(0xFF555555) : const Color(0xFFF3F4F6),
+          color: selected ? const Color(0xFF555555) : Colors.white,
           borderRadius: BorderRadius.circular(20),
-          border: selected
-              ? null
-              : Border.all(color: const Color(0xFFCCCCCC)),
+          border: selected ? null : Border.all(color: const Color(0xFFE5E7EB)),
         ),
         child: Text(
           label,

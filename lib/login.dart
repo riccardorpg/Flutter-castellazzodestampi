@@ -47,8 +47,9 @@ class _LoginScreenState extends State<LoginScreen> {
       if (!mounted) return;
       Navigator.pushReplacementNamed(context, '/menu');
     } else {
-      setState(() =>
-          _error = result['message'] as String? ?? 'Errore di accesso.');
+      setState(
+        () => _error = result['message'] as String? ?? 'Errore di accesso.',
+      );
     }
   }
 
@@ -57,164 +58,179 @@ class _LoginScreenState extends State<LoginScreen> {
     return Scaffold(
       backgroundColor: Colors.white,
       body: SafeArea(
-        child: Column(
-          children: [
-            Expanded(
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.symmetric(horizontal: 32),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const SizedBox(height: 48),
-                    Center(
-                      child: Image.asset(
-                        'android/app/src/main/res/drawable/logo.png',
-                        width: 110,
-                        height: 110,
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    const Center(
-                      child: Text(
-                        'Castellazzo dei Stampi',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                          color: Color(0xFF111111),
-                          fontSize: 22,
-                          fontFamily: 'Inter',
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 40),
-                    const Text(
-                      'ACCEDI',
-                      style: TextStyle(
-                        color: Color(0xFF6B7280),
-                        fontSize: 13,
-                        fontFamily: 'Inter',
-                        fontWeight: FontWeight.w600,
-                        letterSpacing: 1,
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    _InputField(
-                      controller: _emailController,
-                      hintText: 'Email',
-                      icon: Icons.mail_outline,
-                      keyboardType: TextInputType.emailAddress,
-                    ),
-                    const SizedBox(height: 10),
-                    _InputField(
-                      controller: _passwordController,
-                      hintText: 'Password',
-                      icon: Icons.lock_outline,
-                      obscureText: _obscurePassword,
-                      suffixIcon: IconButton(
-                        icon: Icon(
-                          _obscurePassword
-                              ? Icons.visibility_off
-                              : Icons.visibility,
-                          color: const Color(0xFF9CA3AF),
-                          size: 20,
-                        ),
-                        onPressed: () => setState(
-                            () => _obscurePassword = !_obscurePassword),
-                      ),
-                      onSubmitted: (_) => _login(),
-                    ),
-                    const SizedBox(height: 10),
-                    Align(
-                      alignment: Alignment.centerRight,
-                      child: GestureDetector(
-                        onTap: () => Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => const ForgotPasswordScreen(),
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final logoSize = (constraints.maxWidth * 0.45).clamp(140.0, 200.0);
+
+            return SingleChildScrollView(
+              padding: const EdgeInsets.symmetric(horizontal: 32),
+              child: ConstrainedBox(
+                constraints: BoxConstraints(minHeight: constraints.maxHeight),
+                // -0.45 = leggermente sopra il centro verticale
+                child: Align(
+                  alignment: const Alignment(0, -0.45),
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 420),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const SizedBox(height: 16),
+                        Center(
+                          child: Image.asset(
+                            'android/app/src/main/res/drawable/logo.png',
+                            width: logoSize,
+                            height: logoSize,
                           ),
                         ),
-                        child: const Text(
-                          'Password dimenticata?',
+                        const SizedBox(height: 8),
+                        const Center(
+                          child: Text(
+                            'Castellazzo dei Stampi',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              color: Color(0xFF111111),
+                              fontSize: 22,
+                              fontFamily: 'Inter',
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 28),
+                        const Text(
+                          'ACCEDI',
                           style: TextStyle(
-                            color: Color(0xFF7BA566),
+                            color: Color(0xFF6B7280),
                             fontSize: 13,
                             fontFamily: 'Inter',
+                            fontWeight: FontWeight.w600,
+                            letterSpacing: 1,
                           ),
                         ),
-                      ),
-                    ),
-                    if (_error != null) ...[
-                      const SizedBox(height: 16),
-                      Container(
-                        padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFFEF2F2),
-                          borderRadius: BorderRadius.circular(8),
-                          border: Border.all(color: const Color(0xFFFCA5A5)),
+                        const SizedBox(height: 12),
+                        _InputField(
+                          controller: _emailController,
+                          hintText: 'Email',
+                          icon: Icons.mail_outline,
+                          keyboardType: TextInputType.emailAddress,
                         ),
-                        child: Row(
-                          children: [
-                            const Icon(Icons.error_outline,
-                                color: Colors.redAccent, size: 16),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: Text(
-                                _error!,
-                                style: const TextStyle(
-                                  color: Colors.redAccent,
-                                  fontSize: 13,
-                                  fontFamily: 'Inter',
-                                ),
+                        const SizedBox(height: 10),
+                        _InputField(
+                          controller: _passwordController,
+                          hintText: 'Password',
+                          icon: Icons.lock_outline,
+                          obscureText: _obscurePassword,
+                          suffixIcon: IconButton(
+                            icon: Icon(
+                              _obscurePassword
+                                  ? Icons.visibility_off
+                                  : Icons.visibility,
+                              color: const Color(0xFF9CA3AF),
+                              size: 20,
+                            ),
+                            onPressed: () => setState(
+                              () => _obscurePassword = !_obscurePassword,
+                            ),
+                          ),
+                          onSubmitted: (_) => _login(),
+                        ),
+                        const SizedBox(height: 10),
+                        Align(
+                          alignment: Alignment.centerRight,
+                          child: GestureDetector(
+                            onTap: () => Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) => const ForgotPasswordScreen(),
                               ),
                             ),
-                          ],
+                            child: const Text(
+                              'Password dimenticata?',
+                              style: TextStyle(
+                                color: Color(0xFF7BA566),
+                                fontSize: 13,
+                                fontFamily: 'Inter',
+                              ),
+                            ),
+                          ),
                         ),
-                      ),
-                    ],
-                    const SizedBox(height: 24),
-                  ],
-                ),
-              ),
-            ),
-            Padding(
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 32, vertical: 24),
-              child: SizedBox(
-                width: double.infinity,
-                height: 52,
-                child: ElevatedButton(
-                  onPressed: _loading ? null : _login,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF7BA566),
-                    foregroundColor: Colors.white,
-                    disabledBackgroundColor:
-                        const Color(0xFF7BA566).withValues(alpha: 0.5),
-                    elevation: 0,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
+                        if (_error != null) ...[
+                          const SizedBox(height: 16),
+                          Container(
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFFEF2F2),
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(
+                                color: const Color(0xFFFCA5A5),
+                              ),
+                            ),
+                            child: Row(
+                              children: [
+                                const Icon(
+                                  Icons.error_outline,
+                                  color: Colors.redAccent,
+                                  size: 16,
+                                ),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: Text(
+                                    _error!,
+                                    style: const TextStyle(
+                                      color: Colors.redAccent,
+                                      fontSize: 13,
+                                      fontFamily: 'Inter',
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                        const SizedBox(height: 24),
+                        SizedBox(
+                          width: double.infinity,
+                          height: 52,
+                          child: ElevatedButton(
+                            onPressed: _loading ? null : _login,
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: const Color(0xFF7BA566),
+                              foregroundColor: Colors.white,
+                              disabledBackgroundColor: const Color(
+                                0xFF7BA566,
+                              ).withValues(alpha: 0.5),
+                              elevation: 0,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                            ),
+                            child: _loading
+                                ? const SizedBox(
+                                    width: 20,
+                                    height: 20,
+                                    child: CircularProgressIndicator(
+                                      color: Colors.white,
+                                      strokeWidth: 2,
+                                    ),
+                                  )
+                                : const Text(
+                                    'ENTRA',
+                                    style: TextStyle(
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.bold,
+                                      fontFamily: 'Inter',
+                                    ),
+                                  ),
+                          ),
+                        ),
+                        const SizedBox(height: 24),
+                      ],
                     ),
                   ),
-                  child: _loading
-                      ? const SizedBox(
-                          width: 20,
-                          height: 20,
-                          child: CircularProgressIndicator(
-                            color: Colors.white,
-                            strokeWidth: 2,
-                          ),
-                        )
-                      : const Text(
-                          'ENTRA',
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.bold,
-                            fontFamily: 'Inter',
-                          ),
-                        ),
                 ),
               ),
-            ),
-          ],
+            );
+          },
         ),
       ),
     );

@@ -40,8 +40,9 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
     if (result['success'] == true) {
       setState(() => _sent = true);
     } else {
-      setState(() =>
-          _error = result['message'] as String? ?? 'Errore. Riprova.');
+      setState(
+        () => _error = result['message'] as String? ?? 'Errore. Riprova.',
+      );
     }
   }
 
@@ -53,225 +54,259 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
         backgroundColor: Colors.white,
         elevation: 0,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios_new,
-              color: Color(0xFF111111), size: 18),
+          icon: const Icon(
+            Icons.arrow_back_ios_new,
+            color: Color(0xFF111111),
+            size: 18,
+          ),
           onPressed: () => Navigator.pop(context),
         ),
       ),
-      body: SafeArea(
-        child: _sent ? _buildSuccess() : _buildForm(),
-      ),
+      body: SafeArea(child: _sent ? _buildSuccess() : _buildForm()),
     );
   }
 
   Widget _buildForm() {
-    return Column(
-      children: [
-        Expanded(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.symmetric(horizontal: 32),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const SizedBox(height: 24),
-                Center(
-                  child: Container(
-                    width: 72,
-                    height: 72,
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFEDF5E9),
-                      borderRadius: BorderRadius.circular(20),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final boxSize = (constraints.maxWidth * 0.24).clamp(88.0, 120.0);
+
+        return SingleChildScrollView(
+          padding: const EdgeInsets.symmetric(horizontal: 32),
+          child: ConstrainedBox(
+            constraints: BoxConstraints(minHeight: constraints.maxHeight),
+            // -0.45 = leggermente sopra il centro verticale
+            child: Align(
+              alignment: const Alignment(0, -0.45),
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 420),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const SizedBox(height: 16),
+                    Center(
+                      child: Container(
+                        width: boxSize,
+                        height: boxSize,
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFEDF5E9),
+                          borderRadius: BorderRadius.circular(24),
+                        ),
+                        child: Icon(
+                          Icons.lock_reset,
+                          color: const Color(0xFF7BA566),
+                          size: boxSize * 0.5,
+                        ),
+                      ),
                     ),
-                    child: const Icon(
-                      Icons.lock_reset,
-                      color: Color(0xFF7BA566),
-                      size: 36,
+                    const SizedBox(height: 20),
+                    const Center(
+                      child: Text(
+                        'Password dimenticata?',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          color: Color(0xFF111111),
+                          fontSize: 22,
+                          fontFamily: 'Inter',
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
                     ),
-                  ),
-                ),
-                const SizedBox(height: 20),
-                const Center(
-                  child: Text(
-                    'Password dimenticata?',
-                    style: TextStyle(
-                      color: Color(0xFF111111),
-                      fontSize: 22,
-                      fontFamily: 'Inter',
-                      fontWeight: FontWeight.bold,
+                    const SizedBox(height: 10),
+                    const Center(
+                      child: Text(
+                        'Inserisci la tua email. Ti invieremo\nuna password temporanea.',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          color: Color(0xFF6B7280),
+                          fontSize: 14,
+                          fontFamily: 'Inter',
+                          height: 1.5,
+                        ),
+                      ),
                     ),
-                  ),
-                ),
-                const SizedBox(height: 10),
-                const Center(
-                  child: Text(
-                    'Inserisci la tua email. Ti invieremo\nuna password temporanea.',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      color: Color(0xFF6B7280),
-                      fontSize: 14,
-                      fontFamily: 'Inter',
-                      height: 1.5,
+                    const SizedBox(height: 28),
+                    const Text(
+                      'EMAIL',
+                      style: TextStyle(
+                        color: Color(0xFF6B7280),
+                        fontSize: 13,
+                        fontFamily: 'Inter',
+                        fontWeight: FontWeight.w600,
+                        letterSpacing: 1,
+                      ),
                     ),
-                  ),
-                ),
-                const SizedBox(height: 36),
-                const Text(
-                  'EMAIL',
-                  style: TextStyle(
-                    color: Color(0xFF6B7280),
-                    fontSize: 13,
-                    fontFamily: 'Inter',
-                    fontWeight: FontWeight.w600,
-                    letterSpacing: 1,
-                  ),
-                ),
-                const SizedBox(height: 12),
-                _InputField(
-                  controller: _emailController,
-                  hintText: 'La tua email',
-                  icon: Icons.mail_outline,
-                  keyboardType: TextInputType.emailAddress,
-                  onSubmitted: (_) => _submit(),
-                ),
-                if (_error != null) ...[
-                  const SizedBox(height: 16),
-                  Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFFEF2F2),
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: const Color(0xFFFCA5A5)),
+                    const SizedBox(height: 12),
+                    _InputField(
+                      controller: _emailController,
+                      hintText: 'La tua email',
+                      icon: Icons.mail_outline,
+                      keyboardType: TextInputType.emailAddress,
+                      onSubmitted: (_) => _submit(),
                     ),
-                    child: Row(
-                      children: [
-                        const Icon(Icons.error_outline,
-                            color: Colors.redAccent, size: 16),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Text(
-                            _error!,
-                            style: const TextStyle(
+                    if (_error != null) ...[
+                      const SizedBox(height: 16),
+                      Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFFEF2F2),
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: const Color(0xFFFCA5A5)),
+                        ),
+                        child: Row(
+                          children: [
+                            const Icon(
+                              Icons.error_outline,
                               color: Colors.redAccent,
-                              fontSize: 13,
-                              fontFamily: 'Inter',
+                              size: 16,
                             ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                _error!,
+                                style: const TextStyle(
+                                  color: Colors.redAccent,
+                                  fontSize: 13,
+                                  fontFamily: 'Inter',
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                    const SizedBox(height: 24),
+                    SizedBox(
+                      width: double.infinity,
+                      height: 52,
+                      child: ElevatedButton(
+                        onPressed: _loading ? null : _submit,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFF7BA566),
+                          foregroundColor: Colors.white,
+                          disabledBackgroundColor: const Color(
+                            0xFF7BA566,
+                          ).withValues(alpha: 0.5),
+                          elevation: 0,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
                           ),
                         ),
-                      ],
+                        child: _loading
+                            ? const SizedBox(
+                                width: 20,
+                                height: 20,
+                                child: CircularProgressIndicator(
+                                  color: Colors.white,
+                                  strokeWidth: 2,
+                                ),
+                              )
+                            : const Text(
+                                'INVIA',
+                                style: TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.bold,
+                                  fontFamily: 'Inter',
+                                ),
+                              ),
+                      ),
                     ),
-                  ),
-                ],
-              ],
-            ),
-          ),
-        ),
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 24),
-          child: SizedBox(
-            width: double.infinity,
-            height: 52,
-            child: ElevatedButton(
-              onPressed: _loading ? null : _submit,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF7BA566),
-                foregroundColor: Colors.white,
-                disabledBackgroundColor:
-                    const Color(0xFF7BA566).withValues(alpha: 0.5),
-                elevation: 0,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
+                    const SizedBox(height: 24),
+                  ],
                 ),
               ),
-              child: _loading
-                  ? const SizedBox(
-                      width: 20,
-                      height: 20,
-                      child: CircularProgressIndicator(
-                        color: Colors.white,
-                        strokeWidth: 2,
-                      ),
-                    )
-                  : const Text(
-                      'INVIA',
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                        fontFamily: 'Inter',
-                      ),
-                    ),
             ),
           ),
-        ),
-      ],
+        );
+      },
     );
   }
 
   Widget _buildSuccess() {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 32),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Container(
-            width: 80,
-            height: 80,
-            decoration: BoxDecoration(
-              color: const Color(0xFFEDF5E9),
-              borderRadius: BorderRadius.circular(24),
-            ),
-            child: const Icon(
-              Icons.mark_email_read_outlined,
-              color: Color(0xFF7BA566),
-              size: 40,
-            ),
-          ),
-          const SizedBox(height: 24),
-          const Text(
-            'Email inviata!',
-            style: TextStyle(
-              color: Color(0xFF111111),
-              fontSize: 22,
-              fontFamily: 'Inter',
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-          const SizedBox(height: 12),
-          const Text(
-            'Controlla la tua casella di posta.\nUsa la password temporanea per accedere,\npoi cambiala dalle impostazioni.',
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              color: Color(0xFF6B7280),
-              fontSize: 14,
-              fontFamily: 'Inter',
-              height: 1.6,
-            ),
-          ),
-          const SizedBox(height: 40),
-          SizedBox(
-            width: double.infinity,
-            height: 52,
-            child: ElevatedButton(
-              onPressed: () => Navigator.pop(context),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF7BA566),
-                foregroundColor: Colors.white,
-                elevation: 0,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final boxSize = (constraints.maxWidth * 0.26).clamp(96.0, 128.0);
+
+        return SingleChildScrollView(
+          padding: const EdgeInsets.symmetric(horizontal: 32),
+          child: ConstrainedBox(
+            constraints: BoxConstraints(minHeight: constraints.maxHeight),
+            child: Align(
+              alignment: const Alignment(0, -0.45),
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 420),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const SizedBox(height: 16),
+                    Container(
+                      width: boxSize,
+                      height: boxSize,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFEDF5E9),
+                        borderRadius: BorderRadius.circular(24),
+                      ),
+                      child: Icon(
+                        Icons.mark_email_read_outlined,
+                        color: const Color(0xFF7BA566),
+                        size: boxSize * 0.5,
+                      ),
+                    ),
+                    const SizedBox(height: 24),
+                    const Text(
+                      'Email inviata!',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        color: Color(0xFF111111),
+                        fontSize: 22,
+                        fontFamily: 'Inter',
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    const Text(
+                      'Controlla la tua casella di posta.\nUsa la password temporanea per accedere,\npoi cambiala dalle impostazioni.',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        color: Color(0xFF6B7280),
+                        fontSize: 14,
+                        fontFamily: 'Inter',
+                        height: 1.6,
+                      ),
+                    ),
+                    const SizedBox(height: 32),
+                    SizedBox(
+                      width: double.infinity,
+                      height: 52,
+                      child: ElevatedButton(
+                        onPressed: () => Navigator.pop(context),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFF7BA566),
+                          foregroundColor: Colors.white,
+                          elevation: 0,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                        ),
+                        child: const Text(
+                          'TORNA AL LOGIN',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                            fontFamily: 'Inter',
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 24),
+                  ],
                 ),
               ),
-              child: const Text(
-                'TORNA AL LOGIN',
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
-                  fontFamily: 'Inter',
-                ),
-              ),
             ),
           ),
-        ],
-      ),
+        );
+      },
     );
   }
 }
