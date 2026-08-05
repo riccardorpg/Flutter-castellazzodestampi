@@ -37,11 +37,27 @@ class _SegnalazioniScreenState extends State<SegnalazioniScreen> {
     final data = result['success'] == true
         ? List<Map<String, dynamic>>.from(result['data'] as List)
         : <Map<String, dynamic>>[];
+    _sortByInsertion(data);
     setState(() {
       _reports = data;
       _loading = false;
     });
   }
+
+  /// Schede in ordine di inserimento, dalla piu' recente alla piu' vecchia.
+  /// A parita' di data decide l'id, che cresce con l'inserimento.
+  static void _sortByInsertion(List<Map<String, dynamic>> reports) {
+    reports.sort((a, b) {
+      final byDate = _parseDate(b['datetime']).compareTo(_parseDate(a['datetime']));
+      if (byDate != 0) return byDate;
+      return _parseId(b['id']).compareTo(_parseId(a['id']));
+    });
+  }
+
+  static DateTime _parseDate(dynamic raw) =>
+      DateTime.tryParse(raw?.toString() ?? '') ?? DateTime(1970);
+
+  static int _parseId(dynamic raw) => int.tryParse(raw?.toString() ?? '') ?? 0;
 
   List<Map<String, dynamic>> get _filtered {
     if (_filter == 'all') return _reports;
@@ -88,6 +104,12 @@ class _SegnalazioniScreenState extends State<SegnalazioniScreen> {
                   label: 'Tutte',
                   selected: _filter == 'all',
                   onTap: () => setState(() => _filter = 'all'),
+                ),
+                const SizedBox(width: 8),
+                _FilterChip(
+                  label: 'In creazione',
+                  selected: _filter == 'in_creazione',
+                  onTap: () => setState(() => _filter = 'in_creazione'),
                 ),
                 const SizedBox(width: 8),
                 _FilterChip(
@@ -199,6 +221,8 @@ class _ReportCard extends StatelessWidget {
 
   static Color statusColor(String status) {
     switch (status) {
+      case 'in_creazione':
+        return const Color(0xFF8B5CF6); // viola
       case 'pending':
         return const Color(0xFFF59E0B); // giallo
       case 'in_progress':

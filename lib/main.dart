@@ -75,7 +75,10 @@ class _MenuScreenState extends State<MenuScreen> {
     if (result['success'] == true) {
       final data = List<Map<String, dynamic>>.from(result['data'] as List);
       for (final t in data) {
-        debugPrint('[tipo] ${t['name']} → icon_file=${t['icon_file']}');
+        debugPrint(
+          '[tipo] ${t['name']} → icon_file=${t['icon_file']} '
+          'description=${t['description'] ?? t['descrizione']}',
+        );
       }
       setState(() {
         _reportTypes = data;
@@ -210,19 +213,17 @@ class _MenuScreenState extends State<MenuScreen> {
         ),
       );
     }
-    return GridView.builder(
-      padding: const EdgeInsets.all(16),
-      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: 2,
-        crossAxisSpacing: 12,
-        mainAxisSpacing: 12,
-        childAspectRatio: 1.1,
-      ),
+    return ListView.builder(
+      // piu' spazio sopra la prima card
+      padding: const EdgeInsets.fromLTRB(16, 28, 16, 16),
       itemCount: _reportTypes.length,
       itemBuilder: (context, index) {
         final type = _reportTypes[index];
         return _ReportTypeCard(
           name: type['name'] as String? ?? '',
+          // il backend puo' usare 'description' o 'descrizione'
+          description:
+              type['description'] as String? ?? type['descrizione'] as String?,
           iconUrl: type['icon_file'] as String?,
           onTap: () => Navigator.push(
             context,
@@ -238,20 +239,26 @@ class _MenuScreenState extends State<MenuScreen> {
 
 class _ReportTypeCard extends StatelessWidget {
   final String name;
+  final String? description;
   final String? iconUrl;
   final VoidCallback onTap;
 
   const _ReportTypeCard({
     required this.name,
+    this.description,
     this.iconUrl,
     required this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
+    final desc = description?.trim() ?? '';
+
     return GestureDetector(
       onTap: onTap,
       child: Container(
+        margin: const EdgeInsets.only(bottom: 12),
+        padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(
           color: Colors.white,
           borderRadius: BorderRadius.circular(16),
@@ -264,13 +271,12 @@ class _ReportTypeCard extends StatelessWidget {
             ),
           ],
         ),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
+        child: Row(
           children: [
             // ── Quadrato verde ──────────────────────────────────
             Container(
-              width: 70,   // <-- grandezza quadrato
-              height: 70,  // <-- grandezza quadrato
+              width: 56,   // <-- grandezza quadrato
+              height: 56,  // <-- grandezza quadrato
               decoration: BoxDecoration(
                 color: const Color(0xFFEDF5E9),
                 borderRadius: BorderRadius.circular(12),
@@ -281,8 +287,8 @@ class _ReportTypeCard extends StatelessWidget {
                       // ── Icona SVG ──────────────────────────────
                       ? SvgPicture.network(
                           iconUrl!,
-                          width: 52,   // <-- grandezza icona SVG
-                          height: 52,  // <-- grandezza icona SVG
+                          width: 40,   // <-- grandezza icona SVG
+                          height: 40,  // <-- grandezza icona SVG
                           fit: BoxFit.contain,
                           colorFilter: const ColorFilter.mode(
                             Color(0xFF7BA566),
@@ -291,42 +297,65 @@ class _ReportTypeCard extends StatelessWidget {
                           placeholderBuilder: (_) => const Icon(
                             Icons.report_problem,
                             color: Color(0xFF7BA566),
-                            size: 28,
+                            size: 26,
                           ),
                         )
                       // ── Icona PNG/JPG ───────────────────────────
                       : Image.network(
                           iconUrl!,
-                          width: 52,   // <-- grandezza icona PNG
-                          height: 52,  // <-- grandezza icona PNG
+                          width: 40,   // <-- grandezza icona PNG
+                          height: 40,  // <-- grandezza icona PNG
                           fit: BoxFit.contain,
                           errorBuilder: (_, _, _) => const Icon(
                             Icons.report_problem,
                             color: Color(0xFF7BA566),
-                            size: 28,
+                            size: 26,
                           ),
                         )
                   : const Icon(
                       Icons.report_problem,
                       color: Color(0xFF7BA566),
-                      size: 28,
+                      size: 26,
                     ),
             ),
-            const SizedBox(height: 12),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 8),
-              child: Text(
-                name,
-                textAlign: TextAlign.center,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  color: Color(0xFF111111),
-                  fontSize: 14,
-                  fontFamily: 'Inter',
-                  fontWeight: FontWeight.w500,
-                ),
+            const SizedBox(width: 14),
+            // ── Nome + descrizione ──────────────────────────────
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    name,
+                    style: const TextStyle(
+                      color: Color(0xFF111111),
+                      fontSize: 15,
+                      fontFamily: 'Inter',
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  if (desc.isNotEmpty) ...[
+                    const SizedBox(height: 4),
+                    Text(
+                      desc,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: Color(0xFF6B7280),
+                        fontSize: 13,
+                        fontFamily: 'Inter',
+                        height: 1.4,
+                      ),
+                    ),
+                  ],
+                ],
               ),
+            ),
+            const SizedBox(width: 8),
+            const Icon(
+              Icons.chevron_right,
+              color: Color(0xFF9CA3AF),
+              size: 22,
             ),
           ],
         ),

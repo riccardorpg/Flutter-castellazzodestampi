@@ -207,6 +207,8 @@ class SchedaScreen extends StatelessWidget {
 
   static Color _statusColor(String status) {
     switch (status) {
+      case 'in_creazione':
+        return const Color(0xFF8B5CF6);
       case 'pending':
         return const Color(0xFFF59E0B);
       case 'in_progress':
@@ -222,6 +224,8 @@ class SchedaScreen extends StatelessWidget {
 
   static IconData _statusIcon(String status) {
     switch (status) {
+      case 'in_creazione':
+        return Icons.edit_note;
       case 'pending':
         return Icons.hourglass_empty;
       case 'in_progress':
@@ -269,13 +273,16 @@ class _ImageGrid extends StatelessWidget {
       ),
       itemCount: images.length,
       itemBuilder: (_, i) {
-        final url = '$baseUrl${images[i]['file_path']}';
+        // in griglia si usa la miniatura da 300px; il fullscreen carica
+        // l'immagine originale
+        final thumb = images[i]['thumb_path'] as String? ??
+            images[i]['file_path'] as String;
         return GestureDetector(
           onTap: () => _openFullscreen(context, i),
           child: ClipRRect(
             borderRadius: BorderRadius.circular(8),
             child: Image.network(
-              url,
+              '$baseUrl$thumb',
               fit: BoxFit.cover,
               errorBuilder: (_, _, _) => Container(
                 decoration: BoxDecoration(

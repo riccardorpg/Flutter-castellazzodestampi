@@ -1,9 +1,7 @@
 import 'dart:async';
-import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
-import 'package:http/http.dart' as http;
 import 'package:image_picker/image_picker.dart';
 import 'segnalazioni.dart';
 import 'services/api_service.dart';
@@ -30,12 +28,26 @@ class _FormScreenState extends State<FormScreen> {
   String? _error;
 
   List<Map<String, dynamic>> _suggestions = [];
+  bool _noResults = false;
   Timer? _debounce;
 
-  static const _nominatimHeaders = {
-    'User-Agent': 'CastellazzoDestampiApp/1.0',
-    'Accept-Language': 'it',
-  };
+  /// Bounding box del Comune di Corbetta: fuori da qui la segnalazione
+  /// non viene accettata (stesso vincolo applicato lato server).
+  static const double _corbettaMinLat = 45.4200;
+  static const double _corbettaMaxLat = 45.5150;
+  static const double _corbettaMinLon = 8.8500;
+  static const double _corbettaMaxLon = 8.9650;
+
+  bool get _hasValidPosition =>
+      _latitude != null &&
+      _longitude != null &&
+      _isInCorbetta(_latitude!, _longitude!);
+
+  static bool _isInCorbetta(double lat, double lon) =>
+      lat >= _corbettaMinLat &&
+      lat <= _corbettaMaxLat &&
+      lon >= _corbettaMinLon &&
+      lon <= _corbettaMaxLon;
 
   @override
   void dispose() {
@@ -46,37 +58,35 @@ class _FormScreenState extends State<FormScreen> {
     super.dispose();
   }
 
-  // ── Nominatim autocomplete ─────────────────────────────────────
+  // ── Autocomplete indirizzi (solo Corbetta) ─────────────────────
 
   void _onAddressChanged(String value) {
     _debounce?.cancel();
+    // modificando il testo a mano le coordinate scelte non valgono piu'
+    if (_latitude != null || _longitude != null) {
+      _latitude = null;
+      _longitude = null;
+    }
     if (value.trim().length < 3) {
-      if (_suggestions.isNotEmpty) setState(() => _suggestions = []);
+      if (_suggestions.isNotEmpty || _noResults) {
+        setState(() {
+          _suggestions = [];
+          _noResults = false;
+        });
+      }
       return;
     }
     _debounce = Timer(const Duration(milliseconds: 600), () => _searchAddress(value));
   }
 
   Future<void> _searchAddress(String query) async {
-    try {
-      final uri = Uri.https('nominatim.openstreetmap.org', '/search', {
-        'q': query,
-        'format': 'json',
-        'limit': '5',
-        'addressdetails': '1',
-        'accept-language': 'it',
-      });
-      final res = await http
-          .get(uri, headers: _nominatimHeaders)
-          .timeout(const Duration(seconds: 8));
-      if (!mounted) return;
-      if (res.statusCode == 200) {
-        final data = jsonDecode(res.body) as List;
-        setState(() => _suggestions = List<Map<String, dynamic>>.from(data));
-      }
-    } catch (_) {
-      // ricerca silenziosa
-    }
+    // L'endpoint server restituisce solo indirizzi del Comune di Corbetta.
+    final results = await ApiService.autocompleteAddress(query);
+    if (!mounted) return;
+    setState(() {
+      _suggestions = results;
+      _noResults = results.isEmpty;
+    });
   }
 
   void _selectSuggestion(Map<String, dynamic> item) {
@@ -89,6 +99,8 @@ class _FormScreenState extends State<FormScreen> {
       _latitude = lat;
       _longitude = lon;
       _suggestions = [];
+      _noResults = false;
+      _error = null;
     });
   }
 
@@ -131,6 +143,19 @@ class _FormScreenState extends State<FormScreen> {
       );
 
       if (!mounted) return;
+
+      // Fuori dal territorio comunale la posizione non viene accettata
+      if (!_isInCorbetta(pos.latitude, pos.longitude)) {
+        setState(() {
+          _latitude = null;
+          _longitude = null;
+          _locating = false;
+          _error = 'Ti trovi fuori dal territorio di Corbetta: '
+              'cerca un indirizzo del Comune per proseguire.';
+        });
+        return;
+      }
+
       setState(() {
         _latitude = pos!.latitude;
         _longitude = pos.longitude;
@@ -155,34 +180,27 @@ class _FormScreenState extends State<FormScreen> {
   }
 
   Future<void> _reverseGeocode(double lat, double lon) async {
-    try {
-      final uri = Uri.https('nominatim.openstreetmap.org', '/reverse', {
-        'lat': '$lat',
-        'lon': '$lon',
-        'format': 'json',
-        'addressdetails': '1',
-        'zoom': '18',
-        'accept-language': 'it',
+    final data = await ApiService.reverseGeocode(lat, lon);
+    if (!mounted || data == null) return;
+
+    // Il bounding box e' un rettangolo: il server conferma il Comune
+    if (data['in_corbetta'] == false) {
+      setState(() {
+        _latitude = null;
+        _longitude = null;
+        _error = 'Ti trovi fuori dal territorio di Corbetta: '
+            'cerca un indirizzo del Comune per proseguire.';
       });
-      final res = await http
-          .get(uri, headers: _nominatimHeaders)
-          .timeout(const Duration(seconds: 8));
-      if (!mounted) return;
-      if (res.statusCode == 200) {
-        final data = jsonDecode(res.body) as Map<String, dynamic>;
-        final addr = data['address'] as Map<String, dynamic>? ?? {};
-        final road   = addr['road'] ?? addr['pedestrian'] ?? addr['footway'] ?? addr['path'] ?? '';
-        final number = addr['house_number']?.toString() ?? '';
-        final city   = addr['city'] ?? addr['town'] ?? addr['village'] ?? addr['municipality'] ?? addr['suburb'] ?? '';
-        final parts  = <String>[
-          if (road.isNotEmpty) (number.isNotEmpty ? '$road $number' : road),
-          if (city.isNotEmpty) city,
-        ];
-        final display = parts.isNotEmpty ? parts.join(', ') : (data['display_name'] as String? ?? '');
-        if (display.isNotEmpty) setState(() => _addressController.text = display);
-      }
-    } catch (_) {
-      // indirizzo non trovato — rimane quello scritto dall'utente
+      return;
+    }
+
+    final display = data['address'] as String? ?? '';
+    if (display.isNotEmpty) {
+      setState(() {
+        _addressController.text = display;
+        _suggestions = [];
+        _noResults = false;
+      });
     }
   }
 
@@ -255,15 +273,33 @@ class _FormScreenState extends State<FormScreen> {
 
   void _removeImage(int index) => setState(() => _images.removeAt(index));
 
-  // ── Submit ─────────────────────────────────────────────────────
+  // ── Salvataggio ────────────────────────────────────────────────
 
-  Future<void> _submit() async {
+  bool get _hasContent =>
+      _detailsController.text.trim().isNotEmpty ||
+      _addressController.text.trim().isNotEmpty ||
+      _images.isNotEmpty;
+
+  /// Invia la segnalazione al Comune.
+  Future<void> _submit() => _save(draft: false);
+
+  /// Salva la segnalazione come bozza ("In creazione"), modificabile in seguito.
+  Future<void> _saveDraft() => _save(draft: true);
+
+  Future<void> _save({required bool draft}) async {
     if (_detailsController.text.trim().isEmpty) {
       setState(() => _error = 'Inserisci una descrizione.');
       return;
     }
     if (_addressController.text.trim().isEmpty) {
       setState(() => _error = 'Inserisci un indirizzo.');
+      return;
+    }
+    // L'indirizzo deve essere stato confermato dalla ricerca o dal GPS:
+    // senza coordinate non e' possibile verificare il territorio.
+    if (!_hasValidPosition) {
+      setState(() => _error =
+          'Seleziona un indirizzo di Corbetta dai suggerimenti oppure usa la tua posizione.');
       return;
     }
 
@@ -279,12 +315,22 @@ class _FormScreenState extends State<FormScreen> {
       latitude: _latitude?.toString(),
       longitude: _longitude?.toString(),
       imagePaths: _images.map((x) => x.path).toList(),
+      status: draft ? 'in_creazione' : 'pending',
     );
 
     if (!mounted) return;
     setState(() => _loading = false);
 
     if (result['success'] == true) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          backgroundColor: const Color(0xFF7BA566),
+          content: Text(
+            draft ? 'Bozza salvata.' : 'Segnalazione inviata.',
+            style: const TextStyle(fontFamily: 'Inter'),
+          ),
+        ),
+      );
       Navigator.pushReplacement(
         context,
         MaterialPageRoute(builder: (_) => const SegnalazioniScreen()),
@@ -293,6 +339,40 @@ class _FormScreenState extends State<FormScreen> {
       setState(() =>
           _error = result['message'] as String? ?? 'Errore durante l\'invio.');
     }
+  }
+
+  /// Annulla la compilazione; se ci sono dati chiede conferma.
+  Future<void> _cancel() async {
+    if (!_hasContent) {
+      Navigator.pop(context);
+      return;
+    }
+
+    final discard = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Annullare la segnalazione?',
+            style: TextStyle(fontFamily: 'Inter', fontSize: 17)),
+        content: const Text(
+          'I dati inseriti andranno persi. Puoi invece salvarla come bozza.',
+          style: TextStyle(fontFamily: 'Inter', fontSize: 14),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Continua a compilare',
+                style: TextStyle(fontFamily: 'Inter')),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Annulla segnalazione',
+                style: TextStyle(fontFamily: 'Inter', color: Colors.redAccent)),
+          ),
+        ],
+      ),
+    );
+
+    if (discard == true && mounted) Navigator.pop(context);
   }
 
   // ── UI ─────────────────────────────────────────────────────────
@@ -310,7 +390,7 @@ class _FormScreenState extends State<FormScreen> {
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_ios_new,
               color: Color(0xFF111111), size: 18),
-          onPressed: () => Navigator.pop(context),
+          onPressed: _loading ? null : _cancel,
         ),
         title: const Text(
           'Nuova Segnalazione',
@@ -391,18 +471,49 @@ class _FormScreenState extends State<FormScreen> {
                         focusNode: _addressFocus,
                         style: _inputStyle,
                         onChanged: _onAddressChanged,
-                        decoration: const InputDecoration(
-                          hintText: 'Es. Via Roma 12, Castellazzo…',
-                          hintStyle: TextStyle(color: Color(0xFF9CA3AF)),
-                          prefixIcon: Icon(Icons.location_on_outlined,
+                        decoration: InputDecoration(
+                          hintText: 'Es. Via Roma 12, Corbetta…',
+                          hintStyle: const TextStyle(color: Color(0xFF9CA3AF)),
+                          prefixIcon: const Icon(Icons.location_on_outlined,
                               color: Color(0xFF9CA3AF), size: 20),
+                          // spunta verde quando la posizione e' confermata
+                          suffixIcon: _hasValidPosition
+                              ? const Icon(Icons.check_circle,
+                                  color: Color(0xFF7BA566), size: 20)
+                              : null,
                           border: InputBorder.none,
-                          contentPadding: EdgeInsets.symmetric(vertical: 16),
+                          contentPadding:
+                              const EdgeInsets.symmetric(vertical: 16),
                         ),
                       ),
                     ),
 
-                    // Suggerimenti Nominatim
+                    // Solo indirizzi del Comune di Corbetta
+                    if (_suggestions.isEmpty && !_noResults) ...[
+                      const SizedBox(height: 6),
+                      const Text(
+                        'Sono ammesse solo segnalazioni nel territorio di Corbetta.',
+                        style: TextStyle(
+                          color: Color(0xFF9CA3AF),
+                          fontSize: 11,
+                          fontFamily: 'Inter',
+                        ),
+                      ),
+                    ],
+
+                    if (_noResults) ...[
+                      const SizedBox(height: 6),
+                      const Text(
+                        'Nessun indirizzo trovato a Corbetta.',
+                        style: TextStyle(
+                          color: Colors.redAccent,
+                          fontSize: 11,
+                          fontFamily: 'Inter',
+                        ),
+                      ),
+                    ],
+
+                    // Suggerimenti indirizzo
                     if (_suggestions.isNotEmpty)
                       Container(
                         margin: const EdgeInsets.only(top: 4),
@@ -593,42 +704,104 @@ class _FormScreenState extends State<FormScreen> {
             ),
           ),
 
-          // ── Bottone INVIA fisso ───────────────────────────────
+          // ── Barra pulsanti fissa ──────────────────────────────
           SafeArea(
             top: false,
-            child: Padding(
+            child: Container(
               padding: const EdgeInsets.fromLTRB(24, 12, 24, 16),
-              child: SizedBox(
-                width: double.infinity,
-                height: 52,
-                child: ElevatedButton(
-                  onPressed: _loading ? null : _submit,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF7BA566),
-                    foregroundColor: Colors.white,
-                    disabledBackgroundColor:
-                        const Color(0xFF7BA566).withValues(alpha: 0.5),
-                    elevation: 0,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                  ),
-                  child: _loading
-                      ? const SizedBox(
-                          width: 20,
-                          height: 20,
-                          child: CircularProgressIndicator(
-                              color: Colors.white, strokeWidth: 2),
-                        )
-                      : const Text(
-                          'INVIA',
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.bold,
-                            fontFamily: 'Inter',
+              decoration: const BoxDecoration(
+                color: Colors.white,
+                border: Border(top: BorderSide(color: Color(0xFFE5E7EB))),
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // Annulla · Salva come bozza
+                  Row(
+                    children: [
+                      Expanded(
+                        child: SizedBox(
+                          height: 46,
+                          child: OutlinedButton(
+                            onPressed: _loading ? null : _cancel,
+                            style: OutlinedButton.styleFrom(
+                              foregroundColor: const Color(0xFF666666),
+                              side: const BorderSide(color: Color(0xFFD1D5DB)),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                            ),
+                            child: const Text(
+                              'Annulla',
+                              style: TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w600,
+                                fontFamily: 'Inter',
+                              ),
+                            ),
                           ),
                         ),
-                ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: SizedBox(
+                          height: 46,
+                          child: OutlinedButton(
+                            onPressed: _loading ? null : _saveDraft,
+                            style: OutlinedButton.styleFrom(
+                              foregroundColor: const Color(0xFF7BA566),
+                              side: const BorderSide(color: Color(0xFF7BA566)),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                            ),
+                            child: const Text(
+                              'Salva',
+                              style: TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w600,
+                                fontFamily: 'Inter',
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                  SizedBox(
+                    width: double.infinity,
+                    height: 52,
+                    child: ElevatedButton(
+                      onPressed: _loading ? null : _submit,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF7BA566),
+                        foregroundColor: Colors.white,
+                        disabledBackgroundColor:
+                            const Color(0xFF7BA566).withValues(alpha: 0.5),
+                        elevation: 0,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                      child: _loading
+                          ? const SizedBox(
+                              width: 20,
+                              height: 20,
+                              child: CircularProgressIndicator(
+                                  color: Colors.white, strokeWidth: 2),
+                            )
+                          : const Text(
+                              'INVIA',
+                              style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold,
+                                fontFamily: 'Inter',
+                              ),
+                            ),
+                    ),
+                  ),
+                ],
               ),
             ),
           ),
