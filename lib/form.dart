@@ -5,10 +5,17 @@ import 'package:geolocator/geolocator.dart';
 import 'package:image_picker/image_picker.dart';
 import 'segnalazioni.dart';
 import 'services/api_service.dart';
+import 'services/draft_store.dart';
+import 'widgets/action_bar.dart';
 
 class FormScreen extends StatefulWidget {
   final Map<String, dynamic> reportType;
-  const FormScreen({super.key, required this.reportType});
+
+  /// Bozza locale da completare: se presente il form parte gia' compilato
+  /// e il salvataggio aggiorna la stessa bozza invece di crearne un'altra.
+  final Map<String, dynamic>? draft;
+
+  const FormScreen({super.key, required this.reportType, this.draft});
 
   @override
   State<FormScreen> createState() => _FormScreenState();
@@ -31,6 +38,11 @@ class _FormScreenState extends State<FormScreen> {
   bool _noResults = false;
   Timer? _debounce;
 
+  /// Id della bozza locale in modifica (null se e' una nuova segnalazione).
+  String? _draftId;
+
+  bool get _isEditingDraft => _draftId != null;
+
   /// Bounding box del Comune di Corbetta: fuori da qui la segnalazione
   /// non viene accettata (stesso vincolo applicato lato server).
   static const double _corbettaMinLat = 45.4200;
@@ -48,6 +60,25 @@ class _FormScreenState extends State<FormScreen> {
       lat <= _corbettaMaxLat &&
       lon >= _corbettaMinLon &&
       lon <= _corbettaMaxLon;
+
+  @override
+  void initState() {
+    super.initState();
+    final draft = widget.draft;
+    if (draft == null) return;
+    // Riapre la bozza dove era stata lasciata; le foto sparite dalla
+    // cache del telefono vengono semplicemente ignorate.
+    _draftId = draft['id']?.toString();
+    _detailsController.text = draft['details'] as String? ?? '';
+    _addressController.text = draft['address'] as String? ?? '';
+    _latitude = double.tryParse(draft['latitude']?.toString() ?? '');
+    _longitude = double.tryParse(draft['longitude']?.toString() ?? '');
+    _images = (draft['image_paths'] as List? ?? const [])
+        .map((p) => p.toString())
+        .where((p) => File(p).existsSync())
+        .map(XFile.new)
+        .toList();
+  }
 
   @override
   void dispose() {
@@ -80,19 +111,87 @@ class _FormScreenState extends State<FormScreen> {
   }
 
   Future<void> _searchAddress(String query) async {
-    // L'endpoint server restituisce solo indirizzi del Comune di Corbetta.
-    final results = await ApiService.autocompleteAddress(query);
+    final results = await ApiService.autocompleteAddress(_corbettaQuery(query));
     if (!mounted) return;
+    // Doppio filtro lato app: vengono mostrate solo le vie di Corbetta,
+    // qualsiasi altro risultato viene scartato senza comparire in elenco.
+    final filtered = _onlyCorbetta(results);
     setState(() {
-      _suggestions = results;
-      _noResults = results.isEmpty;
+      _suggestions = filtered;
+      _noResults = filtered.isEmpty;
     });
+  }
+
+  /// Il geocoder cerca su tutto il territorio nazionale: senza il comune
+  /// "via Fabio Filzi" non trova la via di Corbetta, quindi viene aggiunto
+  /// in coda alla ricerca (l'utente non deve scriverlo).
+  static String _corbettaQuery(String query) {
+    final trimmed = query.trim().replaceAll(RegExp(r'[,\s]+$'), '');
+    if (trimmed.toLowerCase().contains('corbetta')) return trimmed;
+    return '$trimmed, Corbetta';
+  }
+
+  /// Coordinate del suggerimento: il server puo' usare nomi di campo
+  /// diversi, quindi vengono provate le varianti piu' comuni.
+  static double? _latOf(Map<String, dynamic> item) =>
+      _numOf(item, const ['lat', 'latitude']);
+
+  static double? _lonOf(Map<String, dynamic> item) =>
+      _numOf(item, const ['lon', 'lng', 'long', 'longitude']);
+
+  static double? _numOf(Map<String, dynamic> item, List<String> keys) {
+    for (final key in keys) {
+      final value = double.tryParse(item[key]?.toString() ?? '');
+      if (value != null) return value;
+    }
+    return null;
+  }
+
+  /// Comuni confinanti: se l'indirizzo li cita non e' di Corbetta,
+  /// anche se le coordinate cadono dentro il rettangolo del bounding box.
+  /// Le frazioni di Corbetta (Soriano, Cerello, Battuello, Castellazzo
+  /// de' Stampi) non vanno elencate qui: sono territorio comunale.
+  static const List<String> _comuniLimitrofi = [
+    'magenta',
+    'santo stefano ticino',
+    'ossona',
+    'mesero',
+    'marcallo',
+    'casorezzo',
+    'arluno',
+    'sedriano',
+    'vittuone',
+    'bareggio',
+    'boffalora',
+    'robecco',
+    'cisliano',
+    'albairate',
+    'cassinetta',
+  ];
+
+  /// Tiene solo le vie di Corbetta: coordinate dentro il territorio comunale
+  /// e nessun riferimento a un comune confinante nell'indirizzo.
+  static List<Map<String, dynamic>> _onlyCorbetta(
+      List<Map<String, dynamic>> results) {
+    return results.where((item) {
+      final lat = _latOf(item);
+      final lon = _lonOf(item);
+      // Con coordinate note vale il bounding box; se il server non le
+      // restituisce si decide solo dal testo dell'indirizzo.
+      if (lat != null && lon != null && !_isInCorbetta(lat, lon)) return false;
+
+      // Testo completo del risultato: display_name piu' eventuali
+      // campi extra (city/town/village) restituiti dal server.
+      final text = item.values.join(' ').toLowerCase();
+      if (text.contains('corbetta')) return true;
+      return !_comuniLimitrofi.any(text.contains);
+    }).toList();
   }
 
   void _selectSuggestion(Map<String, dynamic> item) {
     final display = item['display_name'] as String? ?? '';
-    final lat = double.tryParse(item['lat']?.toString() ?? '');
-    final lon = double.tryParse(item['lon']?.toString() ?? '');
+    final lat = _latOf(item);
+    final lon = _lonOf(item);
     _addressController.text = display;
     _addressFocus.unfocus();
     setState(() {
@@ -102,6 +201,56 @@ class _FormScreenState extends State<FormScreen> {
       _noResults = false;
       _error = null;
     });
+  }
+
+  // ── Avviso fuori territorio ────────────────────────────────────
+
+  /// Popup bloccante mostrato quando la posizione e' fuori da Corbetta.
+  Future<void> _showOutsideCorbettaDialog() async {
+    if (!mounted) return;
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+        ),
+        title: Row(
+          children: const [
+            Icon(Icons.location_off_outlined, color: Colors.redAccent, size: 20),
+            SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                'Fuori dal Comune di Corbetta',
+                style: TextStyle(
+                  fontFamily: 'Inter',
+                  fontSize: 17,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+          ],
+        ),
+        content: const Text(
+          'Ti trovi fuori dal territorio di Corbetta.\n'
+          'Sono ammesse solo segnalazioni nel Comune di Corbetta: '
+          'cerca un indirizzo di Corbetta per proseguire.',
+          style: TextStyle(fontFamily: 'Inter', fontSize: 14),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text(
+              'Chiudi',
+              style: TextStyle(
+                fontFamily: 'Inter',
+                fontWeight: FontWeight.w600,
+                color: Color(0xFF7BA566),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   // ── GPS + reverse geocoding ────────────────────────────────────
@@ -150,9 +299,9 @@ class _FormScreenState extends State<FormScreen> {
           _latitude = null;
           _longitude = null;
           _locating = false;
-          _error = 'Ti trovi fuori dal territorio di Corbetta: '
-              'cerca un indirizzo del Comune per proseguire.';
+          _error = null;
         });
+        await _showOutsideCorbettaDialog();
         return;
       }
 
@@ -188,9 +337,9 @@ class _FormScreenState extends State<FormScreen> {
       setState(() {
         _latitude = null;
         _longitude = null;
-        _error = 'Ti trovi fuori dal territorio di Corbetta: '
-            'cerca un indirizzo del Comune per proseguire.';
+        _error = null;
       });
+      await _showOutsideCorbettaDialog();
       return;
     }
 
@@ -283,30 +432,60 @@ class _FormScreenState extends State<FormScreen> {
   /// Invia la segnalazione al Comune.
   Future<void> _submit() => _save(draft: false);
 
-  /// Salva la segnalazione come bozza ("In creazione"), modificabile in seguito.
+  /// Salva la bozza solo sul dispositivo: non viene inviata al Comune
+  /// e resta grigia nel filtro "In creazione" finche' non si preme INVIA.
   Future<void> _saveDraft() => _save(draft: true);
 
   Future<void> _save({required bool draft}) async {
-    if (_detailsController.text.trim().isEmpty) {
-      setState(() => _error = 'Inserisci una descrizione.');
-      return;
-    }
-    if (_addressController.text.trim().isEmpty) {
-      setState(() => _error = 'Inserisci un indirizzo.');
-      return;
-    }
-    // L'indirizzo deve essere stato confermato dalla ricerca o dal GPS:
-    // senza coordinate non e' possibile verificare il territorio.
-    if (!_hasValidPosition) {
-      setState(() => _error =
-          'Seleziona un indirizzo di Corbetta dai suggerimenti oppure usa la tua posizione.');
-      return;
+    if (draft) {
+      // La bozza puo' restare incompleta: si aggiungono foto e dettagli
+      // in un secondo momento, prima di inviarla.
+      if (!_hasContent) {
+        setState(() =>
+            _error = 'Inserisci almeno una descrizione o un indirizzo.');
+        return;
+      }
+    } else {
+      if (_detailsController.text.trim().isEmpty) {
+        setState(() => _error = 'Inserisci una descrizione.');
+        return;
+      }
+      if (_addressController.text.trim().isEmpty) {
+        setState(() => _error = 'Inserisci un indirizzo.');
+        return;
+      }
+      // L'indirizzo deve essere stato confermato dalla ricerca o dal GPS:
+      // senza coordinate non e' possibile verificare il territorio.
+      if (!_hasValidPosition) {
+        setState(() => _error =
+            'Seleziona un indirizzo di Corbetta dai suggerimenti oppure usa la tua posizione.');
+        return;
+      }
     }
 
     setState(() {
       _loading = true;
       _error = null;
     });
+
+    // La bozza resta sul telefono: nessuna chiamata al server.
+    if (draft) {
+      await DraftStore.save(
+        reportType: widget.reportType,
+        details: _detailsController.text.trim(),
+        address: _addressController.text.trim(),
+        latitude: _latitude?.toString(),
+        longitude: _longitude?.toString(),
+        imagePaths: _images.map((x) => x.path).toList(),
+        localId: _draftId,
+      );
+      if (!mounted) return;
+      setState(() => _loading = false);
+      _finish(_isEditingDraft
+          ? 'Bozza aggiornata.'
+          : 'Bozza salvata solo su questo dispositivo.');
+      return;
+    }
 
     final result = await ApiService.createReport(
       typeId: widget.reportType['id'].toString(),
@@ -322,23 +501,33 @@ class _FormScreenState extends State<FormScreen> {
     setState(() => _loading = false);
 
     if (result['success'] == true) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          backgroundColor: const Color(0xFF7BA566),
-          content: Text(
-            draft ? 'Bozza salvata.' : 'Segnalazione inviata.',
-            style: const TextStyle(fontFamily: 'Inter'),
-          ),
-        ),
-      );
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(builder: (_) => const SegnalazioniScreen()),
-      );
+      // Inviata: la copia locale non serve piu'.
+      if (_draftId != null) await DraftStore.delete(_draftId!);
+      if (!mounted) return;
+      _finish('Segnalazione inviata.');
     } else {
       setState(() =>
           _error = result['message'] as String? ?? 'Errore durante l\'invio.');
     }
+  }
+
+  /// Conferma e chiude il form: tornando alla scheda se si stava
+  /// modificando una bozza, altrimenti all'elenco delle segnalazioni.
+  void _finish(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        backgroundColor: const Color(0xFF7BA566),
+        content: Text(message, style: const TextStyle(fontFamily: 'Inter')),
+      ),
+    );
+    if (_isEditingDraft) {
+      Navigator.pop(context);
+      return;
+    }
+    Navigator.pushReplacement(
+      context,
+      MaterialPageRoute(builder: (_) => const SegnalazioniScreen()),
+    );
   }
 
   /// Annulla la compilazione; se ci sono dati chiede conferma.
@@ -392,9 +581,9 @@ class _FormScreenState extends State<FormScreen> {
               color: Color(0xFF111111), size: 18),
           onPressed: _loading ? null : _cancel,
         ),
-        title: const Text(
-          'Nuova Segnalazione',
-          style: TextStyle(
+        title: Text(
+          _isEditingDraft ? 'Modifica bozza' : 'Nuova Segnalazione',
+          style: const TextStyle(
             color: Color(0xFF111111),
             fontSize: 18,
             fontFamily: 'Inter',
@@ -705,105 +894,33 @@ class _FormScreenState extends State<FormScreen> {
           ),
 
           // ── Barra pulsanti fissa ──────────────────────────────
-          SafeArea(
-            top: false,
-            child: Container(
-              padding: const EdgeInsets.fromLTRB(24, 12, 24, 16),
-              decoration: const BoxDecoration(
-                color: Colors.white,
-                border: Border(top: BorderSide(color: Color(0xFFE5E7EB))),
+          BottomActionBar(
+            children: [
+              PrimaryBarButton(
+                label: 'INVIA',
+                loading: _loading,
+                onPressed: _submit,
               ),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
+              const SizedBox(height: 10),
+              // Annulla · Salva come bozza
+              Row(
                 children: [
-                  // Annulla · Salva come bozza
-                  Row(
-                    children: [
-                      Expanded(
-                        child: SizedBox(
-                          height: 46,
-                          child: OutlinedButton(
-                            onPressed: _loading ? null : _cancel,
-                            style: OutlinedButton.styleFrom(
-                              foregroundColor: const Color(0xFF666666),
-                              side: const BorderSide(color: Color(0xFFD1D5DB)),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                            ),
-                            child: const Text(
-                              'Annulla',
-                              style: TextStyle(
-                                fontSize: 14,
-                                fontWeight: FontWeight.w600,
-                                fontFamily: 'Inter',
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: SizedBox(
-                          height: 46,
-                          child: OutlinedButton(
-                            onPressed: _loading ? null : _saveDraft,
-                            style: OutlinedButton.styleFrom(
-                              foregroundColor: const Color(0xFF7BA566),
-                              side: const BorderSide(color: Color(0xFF7BA566)),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                            ),
-                            child: const Text(
-                              'Salva',
-                              style: TextStyle(
-                                fontSize: 14,
-                                fontWeight: FontWeight.w600,
-                                fontFamily: 'Inter',
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
-                    ],
+                  Expanded(
+                    child: SecondaryBarButton.neutral(
+                      label: 'Annulla',
+                      onPressed: _loading ? null : _cancel,
+                    ),
                   ),
-                  const SizedBox(height: 10),
-                  SizedBox(
-                    width: double.infinity,
-                    height: 52,
-                    child: ElevatedButton(
-                      onPressed: _loading ? null : _submit,
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFF7BA566),
-                        foregroundColor: Colors.white,
-                        disabledBackgroundColor:
-                            const Color(0xFF7BA566).withValues(alpha: 0.5),
-                        elevation: 0,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                      ),
-                      child: _loading
-                          ? const SizedBox(
-                              width: 20,
-                              height: 20,
-                              child: CircularProgressIndicator(
-                                  color: Colors.white, strokeWidth: 2),
-                            )
-                          : const Text(
-                              'INVIA',
-                              style: TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.bold,
-                                fontFamily: 'Inter',
-                              ),
-                            ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: SecondaryBarButton.green(
+                      label: 'Salva bozza',
+                      onPressed: _loading ? null : _saveDraft,
                     ),
                   ),
                 ],
               ),
-            ),
+            ],
           ),
         ],
       ),

@@ -266,7 +266,7 @@ class ApiService {
     }
   }
 
-  /// Comprime le foto sopra 1 MB e le allega alla richiesta multipart.
+  /// Comprime le foto (obiettivo 1 MB) e le allega alla richiesta multipart.
   static Future<void> _attachImages(
       http.MultipartRequest request, List<String> imagePaths) async {
     final compressed = await ImageCompressor.compressAll(imagePaths);

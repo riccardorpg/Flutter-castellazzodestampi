@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'login.dart';
 import 'scheda.dart';
 import 'services/api_service.dart';
+import 'services/draft_store.dart';
 
 class SegnalazioniScreen extends StatefulWidget {
   const SegnalazioniScreen({super.key});
@@ -23,6 +24,9 @@ class _SegnalazioniScreenState extends State<SegnalazioniScreen> {
 
   Future<void> _loadReports() async {
     setState(() => _loading = true);
+    // Le bozze locali non passano dal server: si leggono dal dispositivo
+    // e si mescolano alle segnalazioni gia' inviate.
+    final drafts = await DraftStore.load();
     final result = await ApiService.getMyReports();
     if (!mounted) return;
     if (ApiService.isUnauthenticated(result)) {
@@ -37,6 +41,7 @@ class _SegnalazioniScreenState extends State<SegnalazioniScreen> {
     final data = result['success'] == true
         ? List<Map<String, dynamic>>.from(result['data'] as List)
         : <Map<String, dynamic>>[];
+    data.addAll(drafts);
     _sortByInsertion(data);
     setState(() {
       _reports = data;
@@ -44,8 +49,9 @@ class _SegnalazioniScreenState extends State<SegnalazioniScreen> {
     });
   }
 
-  /// Schede in ordine di inserimento, dalla piu' recente alla piu' vecchia.
-  /// A parita' di data decide l'id, che cresce con l'inserimento.
+  /// Schede in ordine di inserimento, dalla piu' recente alla piu' vecchia,
+  /// bozze locali comprese. A parita' di data decide l'id, che cresce con
+  /// l'inserimento.
   static void _sortByInsertion(List<Map<String, dynamic>> reports) {
     reports.sort((a, b) {
       final byDate = _parseDate(b['datetime']).compareTo(_parseDate(a['datetime']));
@@ -57,7 +63,11 @@ class _SegnalazioniScreenState extends State<SegnalazioniScreen> {
   static DateTime _parseDate(dynamic raw) =>
       DateTime.tryParse(raw?.toString() ?? '') ?? DateTime(1970);
 
-  static int _parseId(dynamic raw) => int.tryParse(raw?.toString() ?? '') ?? 0;
+  /// Le bozze locali hanno id tipo `local_1712345678`: si confronta la
+  /// parte numerica, che e' il momento di creazione.
+  static int _parseId(dynamic raw) =>
+      int.tryParse((raw?.toString() ?? '').replaceAll(RegExp(r'[^0-9]'), '')) ??
+      0;
 
   List<Map<String, dynamic>> get _filtered {
     if (_filter == 'all') return _reports;
@@ -207,7 +217,8 @@ class _SegnalazioniScreenState extends State<SegnalazioniScreen> {
       child: ListView.builder(
         padding: const EdgeInsets.all(16),
         itemCount: list.length,
-        itemBuilder: (_, i) => _ReportCard(report: list[i]),
+        itemBuilder: (_, i) =>
+            _ReportCard(report: list[i], onChanged: _loadReports),
       ),
     );
   }
@@ -217,7 +228,12 @@ class _SegnalazioniScreenState extends State<SegnalazioniScreen> {
 
 class _ReportCard extends StatelessWidget {
   final Map<String, dynamic> report;
-  const _ReportCard({required this.report});
+
+  /// Richiamata al ritorno dalla scheda: una bozza puo' essere stata
+  /// inviata o eliminata, quindi la lista va ricaricata.
+  final Future<void> Function() onChanged;
+
+  const _ReportCard({required this.report, required this.onChanged});
 
   static Color statusColor(String status) {
     switch (status) {
@@ -255,13 +271,20 @@ class _ReportCard extends StatelessWidget {
     final status = report['status'] as String? ?? '';
     final statusLabel = report['status_label'] as String? ?? status;
     final datetime = report['datetime'] as String? ?? '';
-    final color = statusColor(status);
+    // Le bozze locali sono card normali "In creazione": cambia solo il
+    // grigio di bordo e badge, che prende colore dopo l'invio.
+    final isDraft = DraftStore.isLocal(report);
+    final color = isDraft ? const Color(0xFF9CA3AF) : statusColor(status);
+    final label = isDraft ? 'In creazione' : statusLabel;
 
     return GestureDetector(
-      onTap: () => Navigator.push(
-        context,
-        MaterialPageRoute(builder: (_) => SchedaScreen(report: report)),
-      ),
+      onTap: () async {
+        await Navigator.push(
+          context,
+          MaterialPageRoute(builder: (_) => SchedaScreen(report: report)),
+        );
+        await onChanged();
+      },
       child: Container(
         margin: const EdgeInsets.only(bottom: 12),
         decoration: BoxDecoration(
@@ -319,7 +342,7 @@ class _ReportCard extends StatelessWidget {
                                 ),
                               ),
                               child: Text(
-                                statusLabel.toUpperCase(),
+                                label.toUpperCase(),
                                 style: TextStyle(
                                   color: color,
                                   fontSize: 10,

@@ -1,9 +1,36 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
+import 'form.dart';
 import 'services/api_service.dart';
+import 'services/draft_store.dart';
+import 'widgets/action_bar.dart';
 
-class SchedaScreen extends StatelessWidget {
+class SchedaScreen extends StatefulWidget {
   final Map<String, dynamic> report;
   const SchedaScreen({super.key, required this.report});
+
+  @override
+  State<SchedaScreen> createState() => _SchedaScreenState();
+}
+
+class _SchedaScreenState extends State<SchedaScreen> {
+  bool _sending = false;
+
+  /// Copia locale: dopo una modifica della bozza viene rimpiazzata
+  /// con la versione aggiornata letta dallo store.
+  late Map<String, dynamic> _report = widget.report;
+
+  Map<String, dynamic> get report => _report;
+
+  /// Bozza locale: non e' mai stata inviata al Comune.
+  bool get _isDraft => DraftStore.isLocal(report);
+
+  /// Percorsi delle foto della bozza ancora presenti sul dispositivo.
+  List<String> get _localImages => List<String>.from(
+        (report['image_paths'] as List? ?? const [])
+            .map((p) => p.toString())
+            .where((p) => File(p).existsSync()),
+      );
 
   static const _imageExtensions = [
     '.jpg',
@@ -30,6 +57,125 @@ class SchedaScreen extends StatelessWidget {
     );
   }
 
+  // ── Invio / eliminazione bozza ─────────────────────────────────
+
+  /// Invia al Comune la bozza tenuta finora solo sul dispositivo:
+  /// diventa una segnalazione "In attesa" e la copia locale sparisce.
+  Future<void> _sendDraft() async {
+    // Una bozza puo' essere incompleta: prima dell'invio servono
+    // descrizione e indirizzo confermato, come per una nuova segnalazione.
+    final details = (report['details'] as String? ?? '').trim();
+    final address = (report['address'] as String? ?? '').trim();
+    final hasPosition = report['latitude'] != null && report['longitude'] != null;
+    if (details.isEmpty || address.isEmpty || !hasPosition) {
+      _showMessage(
+        'Completa la bozza con "Modifica": servono descrizione e '
+        'indirizzo di Corbetta.',
+        error: true,
+      );
+      return;
+    }
+
+    setState(() => _sending = true);
+
+    final type = report['type'] as Map<String, dynamic>?;
+    final result = await ApiService.createReport(
+      typeId: type?['id']?.toString() ?? '',
+      details: report['details'] as String?,
+      address: report['address'] as String?,
+      latitude: report['latitude']?.toString(),
+      longitude: report['longitude']?.toString(),
+      imagePaths: _localImages,
+      status: 'pending',
+    );
+
+    if (!mounted) return;
+    setState(() => _sending = false);
+
+    if (result['success'] == true) {
+      await DraftStore.delete(report['id'].toString());
+      if (!mounted) return;
+      _showMessage('Segnalazione inviata: ora e\' in attesa.');
+      Navigator.pop(context);
+    } else {
+      _showMessage(
+        result['message'] as String? ?? 'Errore durante l\'invio.',
+        error: true,
+      );
+    }
+  }
+
+  void _showMessage(String message, {bool error = false}) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        backgroundColor:
+            error ? Colors.redAccent : const Color(0xFF7BA566),
+        content: Text(message, style: const TextStyle(fontFamily: 'Inter')),
+      ),
+    );
+  }
+
+  /// Riapre la bozza nel form per aggiungere foto e dettagli mancanti.
+  Future<void> _editDraft() async {
+    final type = report['type'] as Map<String, dynamic>? ?? const {};
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => FormScreen(
+          reportType: Map<String, dynamic>.from(type),
+          draft: report,
+        ),
+      ),
+    );
+    if (!mounted) return;
+
+    // Se la bozza non c'e' piu' e' stata inviata dal form: la scheda
+    // locale non ha piu' senso e si torna all'elenco.
+    final drafts = await DraftStore.load();
+    final id = report['id']?.toString();
+    final updated = drafts.where((d) => d['id']?.toString() == id).toList();
+    if (!mounted) return;
+    if (updated.isEmpty) {
+      Navigator.pop(context);
+      return;
+    }
+    setState(() => _report = updated.first);
+  }
+
+  Future<void> _deleteDraft() async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+        ),
+        title: const Text('Eliminare la bozza?',
+            style: TextStyle(fontFamily: 'Inter', fontSize: 17)),
+        content: const Text(
+          'La bozza verra\' rimossa da questo dispositivo.',
+          style: TextStyle(fontFamily: 'Inter', fontSize: 14),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Annulla',
+                style: TextStyle(fontFamily: 'Inter')),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Elimina',
+                style: TextStyle(fontFamily: 'Inter', color: Colors.redAccent)),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm != true || !mounted) return;
+    await DraftStore.delete(report['id'].toString());
+    if (!mounted) return;
+    Navigator.pop(context);
+  }
+
   @override
   Widget build(BuildContext context) {
     final type = report['type'] as Map<String, dynamic>?;
@@ -37,9 +183,12 @@ class SchedaScreen extends StatelessWidget {
     final details = report['details'] as String? ?? '';
     final address = report['address'] as String? ?? '';
     final status = report['status'] as String? ?? '';
-    final statusLabel = report['status_label'] as String? ?? status;
+    final statusLabel = _isDraft
+        ? 'In creazione'
+        : (report['status_label'] as String? ?? status);
     final datetime = report['datetime'] as String? ?? '';
-    final color = _statusColor(status);
+    // La bozza resta grigia: prende colore solo una volta inviata.
+    final color = _isDraft ? const Color(0xFF9CA3AF) : _statusColor(status);
     final images = _images;
 
     return Scaffold(
@@ -182,7 +331,12 @@ class SchedaScreen extends StatelessWidget {
             ],
 
             // ── Foto ──────────────────────────────────────────────
-            if (images.isNotEmpty) ...[
+            if (_isDraft && _localImages.isNotEmpty) ...[
+              _label('FOTO'),
+              const SizedBox(height: 10),
+              _LocalImageGrid(paths: _localImages),
+              const SizedBox(height: 24),
+            ] else if (!_isDraft && images.isNotEmpty) ...[
               _label('FOTO'),
               const SizedBox(height: 10),
               _ImageGrid(images: images, baseUrl: ApiService.baseUrl),
@@ -191,8 +345,38 @@ class SchedaScreen extends StatelessWidget {
           ],
         ),
       ),
+      bottomNavigationBar: _isDraft ? _draftActions() : null,
     );
   }
+
+  /// Barra azioni della bozza: stessi tre pulsanti del form.
+  Widget _draftActions() => BottomActionBar(
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: SecondaryBarButton.danger(
+                  label: 'Elimina',
+                  onPressed: _sending ? null : _deleteDraft,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: SecondaryBarButton.neutral(
+                  label: 'Modifica',
+                  onPressed: _sending ? null : _editDraft,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          PrimaryBarButton(
+            label: 'INVIA',
+            loading: _sending,
+            onPressed: _sendDraft,
+          ),
+        ],
+      );
 
   static Widget _label(String text) => Text(
     text,
@@ -250,6 +434,44 @@ class SchedaScreen extends StatelessWidget {
     } catch (_) {
       return raw;
     }
+  }
+}
+
+// ── Grid foto della bozza (file locali) ───────────────────────────
+
+class _LocalImageGrid extends StatelessWidget {
+  final List<String> paths;
+  const _LocalImageGrid({required this.paths});
+
+  @override
+  Widget build(BuildContext context) {
+    return GridView.builder(
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: 3,
+        crossAxisSpacing: 6,
+        mainAxisSpacing: 6,
+      ),
+      itemCount: paths.length,
+      itemBuilder: (_, i) => ClipRRect(
+        borderRadius: BorderRadius.circular(8),
+        child: Image.file(
+          File(paths[i]),
+          fit: BoxFit.cover,
+          errorBuilder: (_, _, _) => Container(
+            decoration: BoxDecoration(
+              color: const Color(0xFFF3F4F6),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: const Icon(
+              Icons.broken_image_outlined,
+              color: Color(0xFF9CA3AF),
+            ),
+          ),
+        ),
+      ),
+    );
   }
 }
 
