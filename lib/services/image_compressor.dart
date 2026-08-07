@@ -9,12 +9,17 @@ import 'package:path_provider/path_provider.dart';
 /// sono comunque da 4000px e alleggerirle riduce upload e spazio sul server.
 /// Se la ricompressione non guadagna nulla si invia l'originale.
 class ImageCompressor {
-  /// Obiettivo: portare ogni foto sotto 1 MB.
-  static const int thresholdBytes = 1024 * 1024;
+  /// Obiettivo: portare ogni foto sotto 400 KB. Per una segnalazione basta
+  /// e avanza, e su rete mobile l'invio resta veloce anche con piu' foto.
+  static const int thresholdBytes = 400 * 1024;
 
-  static const int _initialMinSide = 1600;
-  static const int _initialQuality = 82;
-  static const int _maxAttempts = 3;
+  /// Lato corto massimo: 1280px copre uno schermo full HD in verticale.
+  static const int _initialMinSide = 1280;
+  static const int _initialQuality = 70;
+  static const int _maxAttempts = 4;
+
+  /// Sotto questa soglia la foto e' gia' leggera: si evita di ricomprimere.
+  static const int _skipBelowBytes = 150 * 1024;
 
   static int _counter = 0;
 
@@ -27,6 +32,7 @@ class ImageCompressor {
 
       final originalSize = await file.length();
       if (originalSize == 0) return path;
+      if (originalSize <= _skipBelowBytes) return path;
 
       final dir = await getTemporaryDirectory();
       var quality = _initialQuality;
@@ -35,7 +41,7 @@ class ImageCompressor {
       var bestSize = originalSize;
 
       // Qualita' e dimensioni calano a ogni tentativo finche' il file
-      // non scende sotto il megabyte.
+      // non scende sotto la soglia.
       for (var attempt = 0; attempt < _maxAttempts; attempt++) {
         final target =
             '${dir.path}/cds_${DateTime.now().microsecondsSinceEpoch}_${_counter++}.jpg';
@@ -52,23 +58,41 @@ class ImageCompressor {
         if (result == null) break;
 
         final size = await result.length();
-        if (best == null || size < bestSize) {
+        final previousBest = best;
+        if (previousBest == null || size < bestSize) {
+          // il tentativo precedente non serve piu': via dalla cache
+          if (previousBest != null) await _deleteQuietly(previousBest);
           best = result.path;
           bestSize = size;
+        } else {
+          await _deleteQuietly(result.path);
         }
         if (size <= thresholdBytes) break;
 
-        quality = (quality - 15).clamp(40, 100);
-        minSide = (minSide * 0.75).round();
+        quality = (quality - 12).clamp(45, 100);
+        minSide = (minSide * 0.8).round();
       }
 
       // Foto gia' ottimizzate (o molto piccole) possono crescere se
       // ricodificate: in quel caso si tiene il file originale.
-      if (best == null || bestSize >= originalSize) return path;
+      if (best == null) return path;
+      if (bestSize >= originalSize) {
+        await _deleteQuietly(best);
+        return path;
+      }
       return best;
     } catch (_) {
       // in caso di errore si invia l'originale: il server ricomprime comunque
       return path;
+    }
+  }
+
+  /// Rimuove un file temporaneo scartato senza far fallire l'invio.
+  static Future<void> _deleteQuietly(String path) async {
+    try {
+      await File(path).delete();
+    } catch (_) {
+      // niente: e' solo cache, il sistema la ripulisce comunque
     }
   }
 

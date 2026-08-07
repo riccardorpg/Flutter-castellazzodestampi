@@ -428,9 +428,7 @@ class _SchedaScreenState extends State<SchedaScreen> {
       final dt = DateTime.parse(raw);
       return '${dt.day.toString().padLeft(2, '0')}/'
           '${dt.month.toString().padLeft(2, '0')}/'
-          '${dt.year}  '
-          '${dt.hour.toString().padLeft(2, '0')}:'
-          '${dt.minute.toString().padLeft(2, '0')}';
+          '${dt.year}';
     } catch (_) {
       return raw;
     }
@@ -454,21 +452,40 @@ class _LocalImageGrid extends StatelessWidget {
         mainAxisSpacing: 6,
       ),
       itemCount: paths.length,
-      itemBuilder: (_, i) => ClipRRect(
-        borderRadius: BorderRadius.circular(8),
-        child: Image.file(
-          File(paths[i]),
-          fit: BoxFit.cover,
-          errorBuilder: (_, _, _) => Container(
-            decoration: BoxDecoration(
-              color: const Color(0xFFF3F4F6),
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: const Icon(
-              Icons.broken_image_outlined,
-              color: Color(0xFF9CA3AF),
+      itemBuilder: (_, i) => GestureDetector(
+        onTap: () => _openFullscreen(context, i),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(8),
+          child: Image.file(
+            File(paths[i]),
+            fit: BoxFit.cover,
+            // miniatura in griglia da 3 colonne: basta decodificare a 300px
+            cacheWidth: 300,
+            errorBuilder: (_, _, _) => Container(
+              decoration: BoxDecoration(
+                color: const Color(0xFFF3F4F6),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: const Icon(
+                Icons.broken_image_outlined,
+                color: Color(0xFF9CA3AF),
+              ),
             ),
           ),
+        ),
+      ),
+    );
+  }
+
+  void _openFullscreen(BuildContext context, int initialIndex) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        fullscreenDialog: true,
+        builder: (_) => _FullscreenGallery(
+          sources: paths,
+          isLocal: true,
+          initialIndex: initialIndex,
         ),
       ),
     );
@@ -529,7 +546,7 @@ class _ImageGrid extends StatelessWidget {
       MaterialPageRoute(
         fullscreenDialog: true,
         builder: (_) => _FullscreenGallery(
-          urls: images.map((a) => '$baseUrl${a['file_path']}').toList(),
+          sources: images.map((a) => '$baseUrl${a['file_path']}').toList(),
           initialIndex: initialIndex,
         ),
       ),
@@ -540,10 +557,17 @@ class _ImageGrid extends StatelessWidget {
 // ── Fullscreen viewer ─────────────────────────────────────────────
 
 class _FullscreenGallery extends StatefulWidget {
-  final List<String> urls;
+  /// URL remoti, oppure percorsi sul dispositivo se [isLocal] e' true:
+  /// le bozze non ancora inviate hanno le foto solo in locale.
+  final List<String> sources;
+  final bool isLocal;
   final int initialIndex;
 
-  const _FullscreenGallery({required this.urls, required this.initialIndex});
+  const _FullscreenGallery({
+    required this.sources,
+    required this.initialIndex,
+    this.isLocal = false,
+  });
 
   @override
   State<_FullscreenGallery> createState() => _FullscreenGalleryState();
@@ -577,9 +601,9 @@ class _FullscreenGalleryState extends State<_FullscreenGallery> {
           icon: const Icon(Icons.close, color: Colors.white),
           onPressed: () => Navigator.pop(context),
         ),
-        title: widget.urls.length > 1
+        title: widget.sources.length > 1
             ? Text(
-                '${_current + 1} / ${widget.urls.length}',
+                '${_current + 1} / ${widget.sources.length}',
                 style: const TextStyle(
                   color: Colors.white,
                   fontFamily: 'Inter',
@@ -591,30 +615,41 @@ class _FullscreenGalleryState extends State<_FullscreenGallery> {
       ),
       body: PageView.builder(
         controller: _controller,
-        itemCount: widget.urls.length,
+        itemCount: widget.sources.length,
         onPageChanged: (i) => setState(() => _current = i),
         itemBuilder: (_, i) => InteractiveViewer(
           minScale: 0.8,
           maxScale: 4.0,
-          child: Center(
-            child: Image.network(
-              widget.urls[i],
-              fit: BoxFit.contain,
-              loadingBuilder: (_, child, progress) {
-                if (progress == null) return child;
-                return const Center(
-                  child: CircularProgressIndicator(color: Colors.white),
-                );
-              },
-              errorBuilder: (_, _, _) => const Icon(
-                Icons.broken_image_outlined,
-                color: Colors.white54,
-                size: 64,
-              ),
-            ),
-          ),
+          child: Center(child: _image(widget.sources[i])),
         ),
       ),
     );
   }
+
+  Widget _image(String source) {
+    if (widget.isLocal) {
+      return Image.file(
+        File(source),
+        fit: BoxFit.contain,
+        errorBuilder: (_, _, _) => _broken,
+      );
+    }
+    return Image.network(
+      source,
+      fit: BoxFit.contain,
+      loadingBuilder: (_, child, progress) {
+        if (progress == null) return child;
+        return const Center(
+          child: CircularProgressIndicator(color: Colors.white),
+        );
+      },
+      errorBuilder: (_, _, _) => _broken,
+    );
+  }
+
+  static const Widget _broken = Icon(
+    Icons.broken_image_outlined,
+    color: Colors.white54,
+    size: 64,
+  );
 }

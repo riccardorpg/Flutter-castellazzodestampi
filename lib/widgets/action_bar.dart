@@ -83,14 +83,14 @@ class PrimaryBarButton extends StatelessWidget {
   }
 }
 
-/// Azione secondaria: altezza generosa e testo che si rimpicciolisce
-/// invece di andare a capo sui telefoni stretti.
+/// Azione secondaria: solo bordo colorato su fondo bianco, altezza
+/// generosa e testo che si rimpicciolisce invece di andare a capo sui
+/// telefoni stretti. Il pieno colorato resta all'azione principale.
 class SecondaryBarButton extends StatelessWidget {
   final String label;
   final VoidCallback? onPressed;
   final Color foreground;
   final Color borderColor;
-  final Color background;
 
   const SecondaryBarButton({
     super.key,
@@ -98,7 +98,6 @@ class SecondaryBarButton extends StatelessWidget {
     required this.onPressed,
     required this.foreground,
     required this.borderColor,
-    required this.background,
   });
 
   /// Grigio neutro (Annulla, Modifica).
@@ -107,26 +106,23 @@ class SecondaryBarButton extends StatelessWidget {
     required this.label,
     required this.onPressed,
   })  : foreground = const Color(0xFF4B5563),
-        borderColor = const Color(0xFF9CA3AF),
-        background = Colors.white;
+        borderColor = const Color(0xFF9CA3AF);
 
-  /// Verde tenue (Salva bozza).
+  /// Verde (Salva bozza).
   const SecondaryBarButton.green({
     super.key,
     required this.label,
     required this.onPressed,
   })  : foreground = const Color(0xFF4F7A3B),
-        borderColor = const Color(0xFF7BA566),
-        background = const Color(0xFFEDF5E9);
+        borderColor = const Color(0xFF7BA566);
 
-  /// Rosso tenue (Elimina).
+  /// Rosso (Elimina).
   const SecondaryBarButton.danger({
     super.key,
     required this.label,
     required this.onPressed,
   })  : foreground = const Color(0xFFB91C1C),
-        borderColor = const Color(0xFFEF4444),
-        background = const Color(0xFFFEF2F2);
+        borderColor = const Color(0xFFEF4444);
 
   @override
   Widget build(BuildContext context) {
@@ -136,7 +132,7 @@ class SecondaryBarButton extends StatelessWidget {
         onPressed: onPressed,
         style: OutlinedButton.styleFrom(
           foregroundColor: foreground,
-          backgroundColor: background,
+          backgroundColor: Colors.white,
           side: BorderSide(color: borderColor, width: 1.5),
           padding: const EdgeInsets.symmetric(horizontal: 8),
           shape: RoundedRectangleBorder(

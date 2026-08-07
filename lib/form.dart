@@ -50,10 +50,16 @@ class _FormScreenState extends State<FormScreen> {
   static const double _corbettaMinLon = 8.8500;
   static const double _corbettaMaxLon = 8.9650;
 
+  /// Indirizzo confermato dalla ricerca o dal GPS. Se il testo nel campo
+  /// non e' piu' questo, l'indirizzo non e' verificato: niente spunta.
+  String? _confirmedAddress;
+
   bool get _hasValidPosition =>
       _latitude != null &&
       _longitude != null &&
-      _isInCorbetta(_latitude!, _longitude!);
+      _isInCorbetta(_latitude!, _longitude!) &&
+      _confirmedAddress != null &&
+      _addressController.text.trim() == _confirmedAddress!.trim();
 
   static bool _isInCorbetta(double lat, double lon) =>
       lat >= _corbettaMinLat &&
@@ -70,9 +76,22 @@ class _FormScreenState extends State<FormScreen> {
     // cache del telefono vengono semplicemente ignorate.
     _draftId = draft['id']?.toString();
     _detailsController.text = draft['details'] as String? ?? '';
-    _addressController.text = draft['address'] as String? ?? '';
+    final savedAddress = draft['address'] as String? ?? '';
+    _addressController.text = savedAddress;
     _latitude = double.tryParse(draft['latitude']?.toString() ?? '');
     _longitude = double.tryParse(draft['longitude']?.toString() ?? '');
+
+    // L'indirizzo salvato nella bozza vale solo se risulta di Corbetta:
+    // altrimenti niente spunta e va riconfermato prima dell'invio.
+    if (_latitude != null &&
+        _longitude != null &&
+        _isInCorbetta(_latitude!, _longitude!) &&
+        _addressNamesCorbetta(savedAddress)) {
+      _confirmedAddress = savedAddress;
+    } else {
+      _latitude = null;
+      _longitude = null;
+    }
     _images = (draft['image_paths'] as List? ?? const [])
         .map((p) => p.toString())
         .where((p) => File(p).existsSync())
@@ -93,33 +112,84 @@ class _FormScreenState extends State<FormScreen> {
 
   void _onAddressChanged(String value) {
     _debounce?.cancel();
-    // modificando il testo a mano le coordinate scelte non valgono piu'
-    if (_latitude != null || _longitude != null) {
+    final short = value.trim().length < 3;
+    // Modificando il testo a mano le coordinate scelte non valgono piu':
+    // il setState serve anche a rimettere subito la x a lato del campo.
+    setState(() {
       _latitude = null;
       _longitude = null;
-    }
-    if (value.trim().length < 3) {
-      if (_suggestions.isNotEmpty || _noResults) {
-        setState(() {
-          _suggestions = [];
-          _noResults = false;
-        });
+      _confirmedAddress = null;
+      if (short) {
+        _suggestions = [];
+        _noResults = false;
       }
-      return;
-    }
+    });
+    if (short) return;
     _debounce = Timer(const Duration(milliseconds: 600), () => _searchAddress(value));
   }
 
+  /// Icona a lato del campo indirizzo: spunta verde solo quando il testo
+  /// e' esattamente l'indirizzo di Corbetta confermato dalla ricerca o dal
+  /// GPS, x rossa in tutti gli altri casi (testo scritto o modificato a
+  /// mano, suggerimento non ancora scelto, posizione rifiutata).
+  Widget? _addressStatusIcon() {
+    if (_hasValidPosition) {
+      return const Icon(Icons.check_circle, color: Color(0xFF7BA566), size: 20);
+    }
+    if (_addressController.text.trim().isEmpty) return null;
+    return const Icon(Icons.cancel, color: Color(0xFFEF4444), size: 20);
+  }
+
   Future<void> _searchAddress(String query) async {
-    final results = await ApiService.autocompleteAddress(_corbettaQuery(query));
-    if (!mounted) return;
     // Doppio filtro lato app: vengono mostrate solo le vie di Corbetta,
     // qualsiasi altro risultato viene scartato senza comparire in elenco.
-    final filtered = _onlyCorbetta(results);
+    var filtered = _onlyCorbetta(
+      await ApiService.autocompleteAddress(_corbettaQuery(query)),
+    );
+    if (!mounted) return;
+
+    // Molti civici non sono mappati: cercando "Via Roma 12" il geocoder
+    // non trova nulla. Si riprova con la sola via e il numero scritto
+    // viene poi riattaccato all'indirizzo scelto, invece di perderlo.
+    final soloVia = _senzaCivico(query);
+    if (filtered.isEmpty && soloVia != null) {
+      filtered = _onlyCorbetta(
+        await ApiService.autocompleteAddress(_corbettaQuery(soloVia)),
+      );
+      if (!mounted) return;
+    }
+
     setState(() {
       _suggestions = filtered;
       _noResults = filtered.isEmpty;
     });
+  }
+
+  /// Numero civico scritto nel campo: "via Roma 12" → "12", "via Roma
+  /// 12/a" → "12/a", "via Roma" → null. Si ferma a 4 cifre per non
+  /// catturare il CAP.
+  static final RegExp _civicoDigitatoRe =
+      RegExp(r'(?:^|[\s,])(\d{1,4}(?:\s*[/-]\s*)?[a-zA-Z]?)\s*$');
+
+  /// "Via Roma 12, Corbetta" → "Via Roma 12": il comune in coda e' il
+  /// formato suggerito dal campo, ma nasconderebbe il civico.
+  static final RegExp _comuneInCodaRe =
+      RegExp(r'[,\s]+corbetta\.?$', caseSensitive: false);
+
+  static String _senzaComune(String query) =>
+      query.trim().replaceAll(_comuneInCodaRe, '').trim();
+
+  static String? _civicoDigitato(String query) {
+    final match = _civicoDigitatoRe.firstMatch(_senzaComune(query));
+    return match?.group(1)?.replaceAll(' ', '');
+  }
+
+  /// La stessa ricerca senza il civico finale, `null` se non c'era.
+  static String? _senzaCivico(String query) {
+    final base = _senzaComune(query);
+    if (!_civicoDigitatoRe.hasMatch(base)) return null;
+    final via = base.replaceAll(_civicoDigitatoRe, '').trim();
+    return via.length >= 3 ? via : null;
   }
 
   /// Il geocoder cerca su tutto il territorio nazionale: senza il comune
@@ -147,49 +217,138 @@ class _FormScreenState extends State<FormScreen> {
     return null;
   }
 
-  /// Comuni confinanti: se l'indirizzo li cita non e' di Corbetta,
-  /// anche se le coordinate cadono dentro il rettangolo del bounding box.
-  /// Le frazioni di Corbetta (Soriano, Cerello, Battuello, Castellazzo
-  /// de' Stampi) non vanno elencate qui: sono territorio comunale.
-  static const List<String> _comuniLimitrofi = [
-    'magenta',
-    'santo stefano ticino',
-    'ossona',
-    'mesero',
-    'marcallo',
-    'casorezzo',
-    'arluno',
-    'sedriano',
-    'vittuone',
-    'bareggio',
-    'boffalora',
-    'robecco',
-    'cisliano',
-    'albairate',
-    'cassinetta',
+  /// Frazioni di Corbetta: sono territorio comunale, ma il geocoder puo'
+  /// metterle al posto del comune (village = "Castellazzo de' Stampi").
+  static const List<String> _frazioniCorbetta = [
+    'castellazzo de\' stampi',
+    'castellazzo de stampi',
+    'cerello',
+    'soriano',
+    'battuello',
   ];
 
-  /// Tiene solo le vie di Corbetta: coordinate dentro il territorio comunale
-  /// e nessun riferimento a un comune confinante nell'indirizzo.
+  /// Nome che identifica il territorio di Corbetta.
+  static bool _isCorbettaName(String name) =>
+      name == 'corbetta' || _frazioniCorbetta.contains(name);
+
+  /// Chiavi con cui il geocoder puo' indicare il comune del risultato.
+  static const List<String> _comuneKeys = [
+    'comune',
+    'municipality',
+    'city',
+    'town',
+    'village',
+  ];
+
+  /// Comune del risultato, minuscolo. Prima i campi strutturati (anche
+  /// dentro `address`), poi il display_name: in Nominatim il comune e'
+  /// uno dei pezzi separati da virgola.
+  static String? _comuneOf(Map<String, dynamic> item) {
+    final address = item['address'];
+    final maps = [item, if (address is Map) address];
+    for (final map in maps) {
+      for (final key in _comuneKeys) {
+        final value = map[key]?.toString().trim().toLowerCase();
+        if (value != null && value.isNotEmpty) return value;
+      }
+    }
+    return null;
+  }
+
+  /// Pezzo di indirizzo fatto di solo civico: "12", "12a", "12/A".
+  static final RegExp _soloCivicoRe =
+      RegExp(r'^\d{1,4}(?:\s*[/-]\s*)?[a-zA-Z]?$');
+
+  /// Numero civico restituito dal geocoder nei campi strutturati.
+  static String? _civicoOf(Map<String, dynamic> item) {
+    final address = item['address'];
+    final maps = [item, if (address is Map) address];
+    for (final map in maps) {
+      for (final key in const ['house_number', 'housenumber', 'civico']) {
+        final value = map[key]?.toString().trim();
+        if (value != null && value.isNotEmpty) return value;
+      }
+    }
+    return null;
+  }
+
+  /// Indirizzo mostrato e salvato, col civico attaccato alla via:
+  /// "Via Roma 12, Corbetta, …". Nominatim lo mette davanti ("12, Via
+  /// Roma, …") e va spostato; se il geocoder non ce l'ha si tiene quello
+  /// scritto a mano, che altrimenti andrebbe perso.
+  static String _addressLabel(
+    Map<String, dynamic> item, {
+    String? civicoDigitato,
+  }) {
+    final parts = (item['display_name'] as String? ?? '')
+        .split(',')
+        .map((p) => p.trim())
+        .where((p) => p.isNotEmpty)
+        .toList();
+    if (parts.isEmpty) return '';
+
+    // Civico in testa al display_name: passa in coda alla via.
+    if (parts.length >= 2 && _soloCivicoRe.hasMatch(parts.first)) {
+      final civico = parts.removeAt(0);
+      parts[0] = '${parts[0]} $civico';
+      return parts.join(', ');
+    }
+
+    final civico = _civicoOf(item) ?? civicoDigitato;
+    // Nessun numero nella via: si aggiunge quello noto.
+    if (civico != null && !parts.first.contains(RegExp(r'\d'))) {
+      parts[0] = '${parts[0]} $civico';
+    }
+    return parts.join(', ');
+  }
+
+  /// Pezzi del display_name, minuscoli: "Via Corbetta, Vittuone, …"
+  /// diventa ['via corbetta', 'vittuone', …].
+  static List<String> _addressParts(Map<String, dynamic> item) =>
+      (item['display_name'] as String? ?? '')
+          .toLowerCase()
+          .split(',')
+          .map((p) => p.trim())
+          .where((p) => p.isNotEmpty)
+          .toList();
+
+  /// Indirizzo che nomina Corbetta o una sua frazione: serve a fidarsi
+  /// di un indirizzo gia' salvato senza doverlo ricercare di nuovo.
+  static bool _addressNamesCorbetta(String address) =>
+      _addressParts({'display_name': address}).any(_isCorbettaName);
+
+  /// Tiene solo le vie di Corbetta. Regola secca: passa unicamente il
+  /// risultato che risulta di Corbetta; in ogni altro caso, comune
+  /// diverso o indirizzo non riconoscibile, viene scartato.
   static List<Map<String, dynamic>> _onlyCorbetta(
       List<Map<String, dynamic>> results) {
-    return results.where((item) {
-      final lat = _latOf(item);
-      final lon = _lonOf(item);
-      // Con coordinate note vale il bounding box; se il server non le
-      // restituisce si decide solo dal testo dell'indirizzo.
-      if (lat != null && lon != null && !_isInCorbetta(lat, lon)) return false;
+    return results.where(_isCorbettaResult).toList();
+  }
 
-      // Testo completo del risultato: display_name piu' eventuali
-      // campi extra (city/town/village) restituiti dal server.
-      final text = item.values.join(' ').toLowerCase();
-      if (text.contains('corbetta')) return true;
-      return !_comuniLimitrofi.any(text.contains);
-    }).toList();
+  static bool _isCorbettaResult(Map<String, dynamic> item) {
+    final lat = _latOf(item);
+    final lon = _lonOf(item);
+    // Con coordinate note vale anche il bounding box, che pero' da solo
+    // non basta: e' un rettangolo che contiene Vittuone e altri comuni.
+    if (lat != null && lon != null && !_isInCorbetta(lat, lon)) return false;
+
+    // Il comune dichiarato decide da solo.
+    final comune = _comuneOf(item);
+    if (comune != null) return _isCorbettaName(comune);
+
+    // Senza campo comune serve comunque una conferma esplicita nel
+    // display_name, confrontando i pezzi interi e non come sottostringhe:
+    // "Via Corbetta, Vittuone" e' una via di Vittuone, non di Corbetta.
+    return _addressParts(item).any(_isCorbettaName);
   }
 
   void _selectSuggestion(Map<String, dynamic> item) {
-    final display = item['display_name'] as String? ?? '';
+    // Il civico scritto a mano resta nell'indirizzo anche quando il
+    // geocoder ha trovato solo la via.
+    final display = _addressLabel(
+      item,
+      civicoDigitato: _civicoDigitato(_addressController.text),
+    );
     final lat = _latOf(item);
     final lon = _lonOf(item);
     _addressController.text = display;
@@ -197,6 +356,7 @@ class _FormScreenState extends State<FormScreen> {
     setState(() {
       _latitude = lat;
       _longitude = lon;
+      _confirmedAddress = display;
       _suggestions = [];
       _noResults = false;
       _error = null;
@@ -205,8 +365,22 @@ class _FormScreenState extends State<FormScreen> {
 
   // ── Avviso fuori territorio ────────────────────────────────────
 
+  /// Scarta la posizione appena presa e avvisa: senza conferma che sia
+  /// di Corbetta non viene mai tenuta.
+  Future<void> _rejectPosition(String message) async {
+    if (!mounted) return;
+    setState(() {
+      _latitude = null;
+      _longitude = null;
+      _confirmedAddress = null;
+      _locating = false;
+      _error = null;
+    });
+    await _showOutsideCorbettaDialog(message: message);
+  }
+
   /// Popup bloccante mostrato quando la posizione e' fuori da Corbetta.
-  Future<void> _showOutsideCorbettaDialog() async {
+  Future<void> _showOutsideCorbettaDialog({String? message}) async {
     if (!mounted) return;
     await showDialog<void>(
       context: context,
@@ -230,11 +404,12 @@ class _FormScreenState extends State<FormScreen> {
             ),
           ],
         ),
-        content: const Text(
-          'Ti trovi fuori dal territorio di Corbetta.\n'
-          'Sono ammesse solo segnalazioni nel Comune di Corbetta: '
-          'cerca un indirizzo di Corbetta per proseguire.',
-          style: TextStyle(fontFamily: 'Inter', fontSize: 14),
+        content: Text(
+          message ??
+              'Ti trovi fuori dal territorio di Corbetta.\n'
+                  'Sono ammesse solo segnalazioni nel Comune di Corbetta: '
+                  'cerca un indirizzo di Corbetta per proseguire.',
+          style: const TextStyle(fontFamily: 'Inter', fontSize: 14),
         ),
         actions: [
           TextButton(
@@ -295,13 +470,12 @@ class _FormScreenState extends State<FormScreen> {
 
       // Fuori dal territorio comunale la posizione non viene accettata
       if (!_isInCorbetta(pos.latitude, pos.longitude)) {
-        setState(() {
-          _latitude = null;
-          _longitude = null;
-          _locating = false;
-          _error = null;
-        });
-        await _showOutsideCorbettaDialog();
+        await _rejectPosition(
+          'Ti trovi fuori dal territorio di Corbetta e la posizione non '
+          'puo\' essere accettata.\n'
+          'Sono ammesse solo segnalazioni nel Comune di Corbetta: cerca un '
+          'indirizzo di Corbetta per proseguire.',
+        );
         return;
       }
 
@@ -330,27 +504,70 @@ class _FormScreenState extends State<FormScreen> {
 
   Future<void> _reverseGeocode(double lat, double lon) async {
     final data = await ApiService.reverseGeocode(lat, lon);
-    if (!mounted || data == null) return;
+    if (!mounted) return;
 
-    // Il bounding box e' un rettangolo: il server conferma il Comune
-    if (data['in_corbetta'] == false) {
-      setState(() {
-        _latitude = null;
-        _longitude = null;
-        _error = null;
-      });
-      await _showOutsideCorbettaDialog();
+    // Senza risposta del geocoder il Comune non e' verificabile: la
+    // posizione non viene tenuta, come se fosse fuori territorio.
+    if (data == null) {
+      await _rejectPosition(
+        'Non e\' stato possibile verificare che la tua posizione sia nel '
+        'Comune di Corbetta.\n'
+        'Riprova oppure cerca un indirizzo di Corbetta.',
+      );
       return;
     }
 
-    final display = data['address'] as String? ?? '';
-    if (display.isNotEmpty) {
-      setState(() {
-        _addressController.text = display;
-        _suggestions = [];
-        _noResults = false;
-      });
+    // L'indirizzo trovato deve risultare di Corbetta: il bounding box da
+    // solo non basta, e' un rettangolo che contiene anche i confinanti.
+    if (!_isCorbettaLocation(data)) {
+      await _rejectPosition(
+        'L\'indirizzo della tua posizione non e\' nel Comune di Corbetta '
+        'e non puo\' essere accettato.\n'
+        'Sono ammesse solo segnalazioni nel Comune di Corbetta: cerca un '
+        'indirizzo di Corbetta per proseguire.',
+      );
+      return;
     }
+
+    // Senza un indirizzo da mostrare non c'e' niente da confermare: le
+    // coordinate da sole non bastano.
+    final display = (data['address'] as String? ?? '').trim();
+    if (display.isEmpty) {
+      await _rejectPosition(
+        'Non e\' stato possibile ricavare l\'indirizzo della tua posizione.\n'
+        'Riprova oppure cerca un indirizzo di Corbetta.',
+      );
+      return;
+    }
+
+    setState(() {
+      _addressController.text = display;
+      _confirmedAddress = display;
+      _suggestions = [];
+      _noResults = false;
+    });
+  }
+
+  /// Esito del reverse geocoding: si accetta solo con una conferma
+  /// esplicita di Corbetta, mai per mancanza di segnali contrari.
+  static bool _isCorbettaLocation(Map<String, dynamic> data) {
+    // Il server dice di no: chiuso qui.
+    if (data['in_corbetta'] == false) return false;
+
+    // L'indirizzo restituito arriva come stringa: viene letto con gli
+    // stessi criteri dei suggerimenti.
+    final item = <String, dynamic>{
+      ...data,
+      'display_name': data['address'] as String? ?? '',
+    };
+
+    final comune = _comuneOf(item);
+    if (comune != null) return _isCorbettaName(comune);
+    if (_addressParts(item).any(_isCorbettaName)) return true;
+
+    // Nessun comune leggibile nell'indirizzo: vale solo il si' esplicito
+    // del server, altrimenti si scarta.
+    return data['in_corbetta'] == true;
   }
 
   // ── Foto ───────────────────────────────────────────────────────
@@ -665,11 +882,7 @@ class _FormScreenState extends State<FormScreen> {
                           hintStyle: const TextStyle(color: Color(0xFF9CA3AF)),
                           prefixIcon: const Icon(Icons.location_on_outlined,
                               color: Color(0xFF9CA3AF), size: 20),
-                          // spunta verde quando la posizione e' confermata
-                          suffixIcon: _hasValidPosition
-                              ? const Icon(Icons.check_circle,
-                                  color: Color(0xFF7BA566), size: 20)
-                              : null,
+                          suffixIcon: _addressStatusIcon(),
                           border: InputBorder.none,
                           contentPadding:
                               const EdgeInsets.symmetric(vertical: 16),
@@ -720,8 +933,13 @@ class _FormScreenState extends State<FormScreen> {
                         ),
                         child: Column(
                           children: _suggestions.asMap().entries.map((e) {
-                            final name =
-                                e.value['display_name'] as String? ?? '';
+                            // In elenco si legge gia' col civico in coda
+                            // alla via, come verra' salvato.
+                            final name = _addressLabel(
+                              e.value,
+                              civicoDigitato:
+                                  _civicoDigitato(_addressController.text),
+                            );
                             return Column(
                               children: [
                                 if (e.key > 0)
@@ -812,6 +1030,9 @@ class _FormScreenState extends State<FormScreen> {
                                   width: 80,
                                   height: 80,
                                   fit: BoxFit.cover,
+                                  // l'anteprima e' 80px: decodificare la foto
+                                  // a piena risoluzione sprecherebbe memoria
+                                  cacheWidth: 240,
                                 ),
                               ),
                               Positioned(
@@ -896,13 +1117,8 @@ class _FormScreenState extends State<FormScreen> {
           // ── Barra pulsanti fissa ──────────────────────────────
           BottomActionBar(
             children: [
-              PrimaryBarButton(
-                label: 'INVIA',
-                loading: _loading,
-                onPressed: _submit,
-              ),
-              const SizedBox(height: 10),
-              // Annulla · Salva come bozza
+              // Annulla · Salva come bozza: i pulsanti piccoli stanno
+              // sempre sopra l'azione principale.
               Row(
                 children: [
                   Expanded(
@@ -919,6 +1135,12 @@ class _FormScreenState extends State<FormScreen> {
                     ),
                   ),
                 ],
+              ),
+              const SizedBox(height: 10),
+              PrimaryBarButton(
+                label: 'INVIA',
+                loading: _loading,
+                onPressed: _submit,
               ),
             ],
           ),
