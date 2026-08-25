@@ -1117,24 +1117,14 @@ class _FormScreenState extends State<FormScreen> {
           // ── Barra pulsanti fissa ──────────────────────────────
           BottomActionBar(
             children: [
-              // Annulla · Salva come bozza: i pulsanti piccoli stanno
-              // sempre sopra l'azione principale.
-              Row(
-                children: [
-                  Expanded(
-                    child: SecondaryBarButton.neutral(
-                      label: 'Annulla',
-                      onPressed: _loading ? null : _cancel,
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: SecondaryBarButton.green(
-                      label: 'Salva bozza',
-                      onPressed: _loading ? null : _saveDraft,
-                    ),
-                  ),
-                ],
+              // Salva come bozza: il pulsante piccolo sta sempre sopra
+              // l'azione principale.
+              SizedBox(
+                width: double.infinity,
+                child: SecondaryBarButton.green(
+                  label: 'Salva bozza',
+                  onPressed: _loading ? null : _saveDraft,
+                ),
               ),
               const SizedBox(height: 10),
               PrimaryBarButton(

@@ -75,9 +75,11 @@ class _MenuScreenState extends State<MenuScreen> {
     if (result['success'] == true) {
       final data = List<Map<String, dynamic>>.from(result['data'] as List);
       for (final t in data) {
+        // I campi disponibili servono a capire con che nome il backend
+        // manda la descrizione: se manca, comparira' qui l'elenco reale.
         debugPrint(
-          '[tipo] ${t['name']} → icon_file=${t['icon_file']} '
-          'description=${t['description'] ?? t['descrizione']}',
+          '[tipo] ${t['name']} → campi: ${t.keys.join(', ')} '
+          '| descrizione=${reportTypeDescription(t) ?? '(assente)'}',
         );
       }
       setState(() {
@@ -221,9 +223,7 @@ class _MenuScreenState extends State<MenuScreen> {
         final type = _reportTypes[index];
         return _ReportTypeCard(
           name: type['name'] as String? ?? '',
-          // il backend puo' usare 'description' o 'descrizione'
-          description:
-              type['description'] as String? ?? type['descrizione'] as String?,
+          description: reportTypeDescription(type),
           iconUrl: type['icon_file'] as String?,
           onTap: () => Navigator.push(
             context,
@@ -235,6 +235,27 @@ class _MenuScreenState extends State<MenuScreen> {
       },
     );
   }
+}
+
+/// Nomi con cui il backend puo' mandare la descrizione di un tipo.
+/// Il primo valore testuale non vuoto vince.
+const _descriptionKeys = [
+  'description',
+  'descrizione',
+  'short_description',
+  'subtitle',
+  'note',
+  'desc',
+];
+
+/// Descrizione del tipo di segnalazione, o null se il backend non la manda.
+/// Ignora i valori non testuali invece di lanciare, come faceva il cast diretto.
+String? reportTypeDescription(Map<String, dynamic> type) {
+  for (final key in _descriptionKeys) {
+    final value = type[key];
+    if (value is String && value.trim().isNotEmpty) return value.trim();
+  }
+  return null;
 }
 
 class _ReportTypeCard extends StatelessWidget {

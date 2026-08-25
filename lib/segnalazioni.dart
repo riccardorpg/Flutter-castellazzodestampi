@@ -396,7 +396,6 @@ class _ReportCard extends StatelessWidget {
                                 fontFamily: 'Inter',
                               ),
                             ),
-                            const Spacer(),
                           ],
                         ),
                       ],

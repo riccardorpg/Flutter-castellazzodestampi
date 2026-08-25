@@ -42,3 +42,10 @@ android {
 flutter {
     source = "../.."
 }
+
+dependencies {
+    // Car App Library: schermate a template per Android Auto.
+    // `app` è il core, `app-projected` l'host proiettato sullo schermo dell'auto.
+    implementation("androidx.car.app:app:1.7.0")
+    implementation("androidx.car.app:app-projected:1.7.0")
+}
