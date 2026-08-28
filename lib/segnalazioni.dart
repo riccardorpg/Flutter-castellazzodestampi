@@ -3,6 +3,7 @@ import 'login.dart';
 import 'scheda.dart';
 import 'services/api_service.dart';
 import 'services/draft_store.dart';
+import 'widgets/read_only_banner.dart';
 
 class SegnalazioniScreen extends StatefulWidget {
   const SegnalazioniScreen({super.key});
@@ -16,6 +17,10 @@ class _SegnalazioniScreenState extends State<SegnalazioniScreen> {
   bool _loading = true;
   String _filter = 'all';
 
+  /// Messaggio d'errore dell'ultimo caricamento: se c'e', prende il posto
+  /// della lista.
+  String? _error;
+
   @override
   void initState() {
     super.initState();
@@ -25,8 +30,11 @@ class _SegnalazioniScreenState extends State<SegnalazioniScreen> {
   Future<void> _loadReports() async {
     setState(() => _loading = true);
     // Le bozze locali non passano dal server: si leggono dal dispositivo
-    // e si mescolano alle segnalazioni gia' inviate.
-    final drafts = await DraftStore.load();
+    // e si mescolano alle segnalazioni gia' inviate. In sola lettura non
+    // si possono creare bozze, quindi non si mostrano.
+    final drafts = ApiService.canWrite
+        ? await DraftStore.load()
+        : <Map<String, dynamic>>[];
     final result = await ApiService.getMyReports();
     if (!mounted) return;
     if (ApiService.isUnauthenticated(result)) {
@@ -38,13 +46,18 @@ class _SegnalazioniScreenState extends State<SegnalazioniScreen> {
       );
       return;
     }
-    final data = result['success'] == true
+    final ok = result['success'] == true;
+    final data = ok
         ? List<Map<String, dynamic>>.from(result['data'] as List)
         : <Map<String, dynamic>>[];
     data.addAll(drafts);
     _sortByInsertion(data);
     setState(() {
       _reports = data;
+      _error = ok
+          ? null
+          : result['message'] as String? ??
+                'Non e\' stato possibile caricare le segnalazioni.';
       _loading = false;
     });
   }
@@ -54,7 +67,9 @@ class _SegnalazioniScreenState extends State<SegnalazioniScreen> {
   /// l'inserimento.
   static void _sortByInsertion(List<Map<String, dynamic>> reports) {
     reports.sort((a, b) {
-      final byDate = _parseDate(b['datetime']).compareTo(_parseDate(a['datetime']));
+      final byDate = _parseDate(
+        b['datetime'],
+      ).compareTo(_parseDate(a['datetime']));
       if (byDate != 0) return byDate;
       return _parseId(b['id']).compareTo(_parseId(a['id']));
     });
@@ -68,6 +83,21 @@ class _SegnalazioniScreenState extends State<SegnalazioniScreen> {
   static int _parseId(dynamic raw) =>
       int.tryParse((raw?.toString() ?? '').replaceAll(RegExp(r'[^0-9]'), '')) ??
       0;
+
+  /// Chip della barra filtri, nell'ordine in cui compaiono.
+  ///
+  /// "In creazione" riguarda solo le bozze locali: in sola lettura non se
+  /// ne possono creare e quelle eventualmente rimaste sul dispositivo non
+  /// vengono caricate, quindi il chip sparisce invece di aprire sempre una
+  /// lista vuota. Restano le card gia' inserite online.
+  Map<String, String> get _filters => {
+    'all': 'Tutte',
+    if (ApiService.canWrite) 'in_creazione': 'In creazione',
+    'pending': 'In attesa',
+    'in_progress': 'In lavorazione',
+    'resolved': 'Risolte',
+    'rejected': 'Rifiutate',
+  };
 
   List<Map<String, dynamic>> get _filtered {
     if (_filter == 'all') return _reports;
@@ -92,59 +122,51 @@ class _SegnalazioniScreenState extends State<SegnalazioniScreen> {
             fit: BoxFit.contain,
           ),
         ),
-        title: const Text(
-          'Le mie segnalazioni',
-          style: TextStyle(
+        // In sola lettura l'elenco non e' piu' solo il proprio: si vedono
+        // tutte le segnalazioni, quindi il titolo non dice "le mie".
+        title: Text(
+          ApiService.canWrite ? 'Le mie segnalazioni' : 'Segnalazioni',
+          style: const TextStyle(
             color: Color(0xFF111111),
             fontSize: 18,
             fontFamily: 'Inter',
             fontWeight: FontWeight.bold,
           ),
         ),
+        // In sola lettura questa e' la schermata iniziale: il pulsante
+        // per uscire, che di solito sta nel menu, serve qui.
+        actions: [
+          if (!ApiService.canWrite)
+            IconButton(
+              tooltip: 'Esci',
+              icon: const Icon(Icons.logout, color: Color(0xFF666666)),
+              onPressed: () async {
+                final navigator = Navigator.of(context);
+                await ApiService.logout();
+                navigator.pushAndRemoveUntil(
+                  MaterialPageRoute(builder: (_) => const LoginScreen()),
+                  (_) => false,
+                );
+              },
+            ),
+        ],
       ),
       body: Column(
         children: [
+          if (!ApiService.canWrite) const ReadOnlyBanner(),
           // ── Filtri ────────────────────────────────────────────
           SingleChildScrollView(
             scrollDirection: Axis.horizontal,
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
             child: Row(
+              spacing: 8,
               children: [
-                _FilterChip(
-                  label: 'Tutte',
-                  selected: _filter == 'all',
-                  onTap: () => setState(() => _filter = 'all'),
-                ),
-                const SizedBox(width: 8),
-                _FilterChip(
-                  label: 'In creazione',
-                  selected: _filter == 'in_creazione',
-                  onTap: () => setState(() => _filter = 'in_creazione'),
-                ),
-                const SizedBox(width: 8),
-                _FilterChip(
-                  label: 'In attesa',
-                  selected: _filter == 'pending',
-                  onTap: () => setState(() => _filter = 'pending'),
-                ),
-                const SizedBox(width: 8),
-                _FilterChip(
-                  label: 'In lavorazione',
-                  selected: _filter == 'in_progress',
-                  onTap: () => setState(() => _filter = 'in_progress'),
-                ),
-                const SizedBox(width: 8),
-                _FilterChip(
-                  label: 'Risolte',
-                  selected: _filter == 'resolved',
-                  onTap: () => setState(() => _filter = 'resolved'),
-                ),
-                const SizedBox(width: 8),
-                _FilterChip(
-                  label: 'Rifiutate',
-                  selected: _filter == 'rejected',
-                  onTap: () => setState(() => _filter = 'rejected'),
-                ),
+                for (final f in _filters.entries)
+                  _FilterChip(
+                    label: f.value,
+                    selected: _filter == f.key,
+                    onTap: () => setState(() => _filter = f.key),
+                  ),
               ],
             ),
           ),
@@ -152,38 +174,82 @@ class _SegnalazioniScreenState extends State<SegnalazioniScreen> {
           Expanded(child: _buildBody()),
         ],
       ),
-      bottomNavigationBar: GestureDetector(
-        onTap: () => Navigator.pop(context),
-        child: Container(
-          height: 68,
-          decoration: const BoxDecoration(
-            color: Colors.white,
-            border: Border(top: BorderSide(color: Color(0xFFE5E7EB))),
-          ),
-          child: const Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(
-                Icons.add_circle_outline,
-                color: Color(0xFF666666),
-                size: 22,
+      // Senza permesso di scrittura non c'e' nessuna "Nuova
+      // segnalazione" da raggiungere: la barra sparisce.
+      bottomNavigationBar: !ApiService.canWrite
+          ? null
+          : GestureDetector(
+              onTap: () => Navigator.pop(context),
+              child: Container(
+                height: 68,
+                decoration: const BoxDecoration(
+                  color: Colors.white,
+                  border: Border(top: BorderSide(color: Color(0xFFE5E7EB))),
+                ),
+                child: const Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(
+                      Icons.add_circle_outline,
+                      color: Color(0xFF666666),
+                      size: 22,
+                    ),
+                    SizedBox(width: 10),
+                    Text(
+                      'Nuova',
+                      style: TextStyle(
+                        color: Color(0xFF666666),
+                        fontSize: 14,
+                        fontFamily: 'Inter',
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
               ),
-              SizedBox(width: 10),
-              Text(
-                'Nuova',
+            ),
+    );
+  }
+
+  /// Schermata centrale, usata sia per la lista vuota sia per l'errore.
+  Widget _message({
+    required IconData icon,
+    required String text,
+    Future<void> Function()? onRetry,
+  }) => Center(
+    child: Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 32),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 64, color: Colors.grey.withValues(alpha: 0.4)),
+          const SizedBox(height: 12),
+          Text(
+            text,
+            textAlign: TextAlign.center,
+            style: const TextStyle(
+              color: Color(0xFF888888),
+              fontFamily: 'Inter',
+            ),
+          ),
+          if (onRetry != null) ...[
+            const SizedBox(height: 12),
+            TextButton(
+              onPressed: onRetry,
+              child: const Text(
+                'Riprova',
                 style: TextStyle(
-                  color: Color(0xFF666666),
-                  fontSize: 14,
+                  color: Color(0xFF7BA566),
                   fontFamily: 'Inter',
                   fontWeight: FontWeight.w600,
                 ),
               ),
-            ],
-          ),
-        ),
+            ),
+          ],
+        ],
       ),
-    );
-  }
+    ),
+  );
 
   Widget _buildBody() {
     if (_loading) {
@@ -191,24 +257,22 @@ class _SegnalazioniScreenState extends State<SegnalazioniScreen> {
         child: CircularProgressIndicator(color: Color(0xFF7BA566)),
       );
     }
+    // Un errore del server non deve somigliare a "non hai segnalazioni":
+    // si mostra il messaggio ricevuto, con la possibilita' di riprovare.
+    if (_error != null) {
+      return _message(
+        icon: Icons.cloud_off_outlined,
+        text: _error!,
+        onRetry: _loadReports,
+      );
+    }
     final list = _filtered;
     if (list.isEmpty) {
-      return Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              Icons.inbox_outlined,
-              size: 64,
-              color: Colors.grey.withValues(alpha: 0.4),
-            ),
-            const SizedBox(height: 12),
-            const Text(
-              'Nessuna segnalazione in questa categoria.',
-              style: TextStyle(color: Color(0xFF888888), fontFamily: 'Inter'),
-            ),
-          ],
-        ),
+      return _message(
+        icon: Icons.inbox_outlined,
+        text: _filter == 'all'
+            ? 'Non c\'e\' ancora nessuna segnalazione.'
+            : 'Nessuna segnalazione in questa categoria.',
       );
     }
     return RefreshIndicator(

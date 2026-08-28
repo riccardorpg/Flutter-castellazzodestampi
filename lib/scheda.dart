@@ -27,10 +27,10 @@ class _SchedaScreenState extends State<SchedaScreen> {
 
   /// Percorsi delle foto della bozza ancora presenti sul dispositivo.
   List<String> get _localImages => List<String>.from(
-        (report['image_paths'] as List? ?? const [])
-            .map((p) => p.toString())
-            .where((p) => File(p).existsSync()),
-      );
+    (report['image_paths'] as List? ?? const [])
+        .map((p) => p.toString())
+        .where((p) => File(p).existsSync()),
+  );
 
   static const _imageExtensions = [
     '.jpg',
@@ -66,7 +66,8 @@ class _SchedaScreenState extends State<SchedaScreen> {
     // descrizione e indirizzo confermato, come per una nuova segnalazione.
     final details = (report['details'] as String? ?? '').trim();
     final address = (report['address'] as String? ?? '').trim();
-    final hasPosition = report['latitude'] != null && report['longitude'] != null;
+    final hasPosition =
+        report['latitude'] != null && report['longitude'] != null;
     if (details.isEmpty || address.isEmpty || !hasPosition) {
       _showMessage(
         'Completa la bozza con "Modifica": servono descrizione e '
@@ -108,8 +109,7 @@ class _SchedaScreenState extends State<SchedaScreen> {
   void _showMessage(String message, {bool error = false}) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        backgroundColor:
-            error ? Colors.redAccent : const Color(0xFF7BA566),
+        backgroundColor: error ? Colors.redAccent : const Color(0xFF7BA566),
         content: Text(message, style: const TextStyle(fontFamily: 'Inter')),
       ),
     );
@@ -146,11 +146,11 @@ class _SchedaScreenState extends State<SchedaScreen> {
     final confirm = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text(
+          'Eliminare la bozza?',
+          style: TextStyle(fontFamily: 'Inter', fontSize: 17),
         ),
-        title: const Text('Eliminare la bozza?',
-            style: TextStyle(fontFamily: 'Inter', fontSize: 17)),
         content: const Text(
           'La bozza verra\' rimossa da questo dispositivo.',
           style: TextStyle(fontFamily: 'Inter', fontSize: 14),
@@ -158,13 +158,14 @@ class _SchedaScreenState extends State<SchedaScreen> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Annulla',
-                style: TextStyle(fontFamily: 'Inter')),
+            child: const Text('Annulla', style: TextStyle(fontFamily: 'Inter')),
           ),
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Elimina',
-                style: TextStyle(fontFamily: 'Inter', color: Colors.redAccent)),
+            child: const Text(
+              'Elimina',
+              style: TextStyle(fontFamily: 'Inter', color: Colors.redAccent),
+            ),
           ),
         ],
       ),
@@ -339,44 +340,47 @@ class _SchedaScreenState extends State<SchedaScreen> {
             ] else if (!_isDraft && images.isNotEmpty) ...[
               _label('FOTO'),
               const SizedBox(height: 10),
-              _ImageGrid(images: images, baseUrl: ApiService.baseUrl),
+              _ImageGrid(images: images),
               const SizedBox(height: 24),
             ],
           ],
         ),
       ),
-      bottomNavigationBar: _isDraft ? _draftActions() : null,
+      // Invia / Modifica / Elimina solo a chi ha anche la scrittura.
+      bottomNavigationBar: _isDraft && ApiService.canWrite
+          ? _draftActions()
+          : null,
     );
   }
 
   /// Barra azioni della bozza: stessi tre pulsanti del form.
   Widget _draftActions() => BottomActionBar(
+    children: [
+      Row(
         children: [
-          Row(
-            children: [
-              Expanded(
-                child: SecondaryBarButton.danger(
-                  label: 'Elimina',
-                  onPressed: _sending ? null : _deleteDraft,
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: SecondaryBarButton.neutral(
-                  label: 'Modifica',
-                  onPressed: _sending ? null : _editDraft,
-                ),
-              ),
-            ],
+          Expanded(
+            child: SecondaryBarButton.danger(
+              label: 'Elimina',
+              onPressed: _sending ? null : _deleteDraft,
+            ),
           ),
-          const SizedBox(height: 10),
-          PrimaryBarButton(
-            label: 'INVIA',
-            loading: _sending,
-            onPressed: _sendDraft,
+          const SizedBox(width: 12),
+          Expanded(
+            child: SecondaryBarButton.neutral(
+              label: 'Modifica',
+              onPressed: _sending ? null : _editDraft,
+            ),
           ),
         ],
-      );
+      ),
+      const SizedBox(height: 10),
+      PrimaryBarButton(
+        label: 'INVIA',
+        loading: _sending,
+        onPressed: _sendDraft,
+      ),
+    ],
+  );
 
   static Widget _label(String text) => Text(
     text,
@@ -496,9 +500,8 @@ class _LocalImageGrid extends StatelessWidget {
 
 class _ImageGrid extends StatelessWidget {
   final List<Map<String, dynamic>> images;
-  final String baseUrl;
 
-  const _ImageGrid({required this.images, required this.baseUrl});
+  const _ImageGrid({required this.images});
 
   @override
   Widget build(BuildContext context) {
@@ -514,14 +517,18 @@ class _ImageGrid extends StatelessWidget {
       itemBuilder: (_, i) {
         // in griglia si usa la miniatura da 300px; il fullscreen carica
         // l'immagine originale
-        final thumb = images[i]['thumb_path'] as String? ??
-            images[i]['file_path'] as String;
+        final thumb =
+            ApiService.mediaUrl(
+              images[i]['thumb_path'] as String? ??
+                  images[i]['file_path'] as String?,
+            ) ??
+            '';
         return GestureDetector(
           onTap: () => _openFullscreen(context, i),
           child: ClipRRect(
             borderRadius: BorderRadius.circular(8),
             child: Image.network(
-              '$baseUrl$thumb',
+              thumb,
               fit: BoxFit.cover,
               errorBuilder: (_, _, _) => Container(
                 decoration: BoxDecoration(
@@ -546,7 +553,9 @@ class _ImageGrid extends StatelessWidget {
       MaterialPageRoute(
         fullscreenDialog: true,
         builder: (_) => _FullscreenGallery(
-          sources: images.map((a) => '$baseUrl${a['file_path']}').toList(),
+          sources: images
+              .map((a) => ApiService.mediaUrl(a['file_path'] as String?) ?? '')
+              .toList(),
           initialIndex: initialIndex,
         ),
       ),

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'services/api_service.dart';
 import 'forgot_password.dart';
+import 'segnalazioni.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -43,9 +44,38 @@ class _LoginScreenState extends State<LoginScreen> {
     setState(() => _loading = false);
 
     if (result['success'] == true) {
-      await ApiService.saveToken(result['token'] as String);
+      final token = result['token'] as String? ?? '';
+      final permission = ApiService.permissionFromUser(
+        result['user'] as Map<String, dynamic>?,
+      );
+
+      // Credenziali giuste ma nessun permesso sulle segnalazioni:
+      // non si entra e il token appena creato viene buttato via.
+      if (token.isEmpty || permission == AppPermission.none) {
+        ApiService.token = token;
+        await ApiService.logout();
+        if (!mounted) return;
+        setState(
+          () => _error = token.isEmpty
+              ? 'Accesso non riuscito: riprova.'
+              : 'Non hai i permessi per accedere alle segnalazioni. '
+                    'Contatta il Comune per farteli abilitare.',
+        );
+        return;
+      }
+
+      await ApiService.saveToken(token, permission);
       if (!mounted) return;
-      Navigator.pushReplacementNamed(context, '/menu');
+      if (permission == AppPermission.read) {
+        // Sola lettura: si salta il menu "Nuova segnalazione" e si entra
+        // direttamente nell'elenco.
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (_) => const SegnalazioniScreen()),
+        );
+      } else {
+        Navigator.pushReplacementNamed(context, '/menu');
+      }
     } else {
       setState(
         () => _error = result['message'] as String? ?? 'Errore di accesso.',

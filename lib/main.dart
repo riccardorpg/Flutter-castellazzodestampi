@@ -24,11 +24,20 @@ class MyApp extends StatelessWidget {
           if (!snapshot.hasData) {
             return const _SplashScreen();
           }
-          return snapshot.data! ? const MenuScreen() : const LoginScreen();
+          if (!snapshot.data!) return const LoginScreen();
+          // Chi ha la sola lettura non passa dal menu "Nuova
+          // segnalazione": la sua schermata iniziale e' l'elenco.
+          return ApiService.canWrite
+              ? const MenuScreen()
+              : const SegnalazioniScreen();
         },
       ),
       routes: {
-        '/menu': (_) => const MenuScreen(),
+        // Anche arrivandoci per route, senza scrittura il menu delle
+        // nuove segnalazioni non si apre.
+        '/menu': (_) => ApiService.canWrite
+            ? const MenuScreen()
+            : const SegnalazioniScreen(),
       },
     );
   }
@@ -101,7 +110,6 @@ class _MenuScreenState extends State<MenuScreen> {
     }
   }
 
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -112,9 +120,7 @@ class _MenuScreenState extends State<MenuScreen> {
         centerTitle: true,
         leading: Padding(
           padding: const EdgeInsets.all(8),
-          child: Image.asset(
-            'android/app/src/main/res/drawable/logo.png',
-          ),
+          child: Image.asset('android/app/src/main/res/drawable/logo.png'),
         ),
         title: const Text(
           'NUOVA SEGNALAZIONE',
@@ -224,12 +230,10 @@ class _MenuScreenState extends State<MenuScreen> {
         return _ReportTypeCard(
           name: type['name'] as String? ?? '',
           description: reportTypeDescription(type),
-          iconUrl: type['icon_file'] as String?,
+          iconUrl: ApiService.mediaUrl(type['icon_file'] as String?),
           onTap: () => Navigator.push(
             context,
-            MaterialPageRoute(
-              builder: (_) => FormScreen(reportType: type),
-            ),
+            MaterialPageRoute(builder: (_) => FormScreen(reportType: type)),
           ),
         );
       },
@@ -296,8 +300,8 @@ class _ReportTypeCard extends StatelessWidget {
           children: [
             // ── Quadrato verde ──────────────────────────────────
             Container(
-              width: 56,   // <-- grandezza quadrato
-              height: 56,  // <-- grandezza quadrato
+              width: 56, // <-- grandezza quadrato
+              height: 56, // <-- grandezza quadrato
               decoration: BoxDecoration(
                 color: const Color(0xFFEDF5E9),
                 borderRadius: BorderRadius.circular(12),
@@ -305,34 +309,34 @@ class _ReportTypeCard extends StatelessWidget {
               alignment: Alignment.center,
               child: iconUrl != null
                   ? iconUrl!.toLowerCase().endsWith('.svg')
-                      // ── Icona SVG ──────────────────────────────
-                      ? SvgPicture.network(
-                          iconUrl!,
-                          width: 40,   // <-- grandezza icona SVG
-                          height: 40,  // <-- grandezza icona SVG
-                          fit: BoxFit.contain,
-                          colorFilter: const ColorFilter.mode(
-                            Color(0xFF7BA566),
-                            BlendMode.srcIn,
-                          ),
-                          placeholderBuilder: (_) => const Icon(
-                            Icons.report_problem,
-                            color: Color(0xFF7BA566),
-                            size: 26,
-                          ),
-                        )
-                      // ── Icona PNG/JPG ───────────────────────────
-                      : Image.network(
-                          iconUrl!,
-                          width: 40,   // <-- grandezza icona PNG
-                          height: 40,  // <-- grandezza icona PNG
-                          fit: BoxFit.contain,
-                          errorBuilder: (_, _, _) => const Icon(
-                            Icons.report_problem,
-                            color: Color(0xFF7BA566),
-                            size: 26,
-                          ),
-                        )
+                        // ── Icona SVG ──────────────────────────────
+                        ? SvgPicture.network(
+                            iconUrl!,
+                            width: 40, // <-- grandezza icona SVG
+                            height: 40, // <-- grandezza icona SVG
+                            fit: BoxFit.contain,
+                            colorFilter: const ColorFilter.mode(
+                              Color(0xFF7BA566),
+                              BlendMode.srcIn,
+                            ),
+                            placeholderBuilder: (_) => const Icon(
+                              Icons.report_problem,
+                              color: Color(0xFF7BA566),
+                              size: 26,
+                            ),
+                          )
+                        // ── Icona PNG/JPG ───────────────────────────
+                        : Image.network(
+                            iconUrl!,
+                            width: 40, // <-- grandezza icona PNG
+                            height: 40, // <-- grandezza icona PNG
+                            fit: BoxFit.contain,
+                            errorBuilder: (_, _, _) => const Icon(
+                              Icons.report_problem,
+                              color: Color(0xFF7BA566),
+                              size: 26,
+                            ),
+                          )
                   : const Icon(
                       Icons.report_problem,
                       color: Color(0xFF7BA566),
@@ -373,11 +377,7 @@ class _ReportTypeCard extends StatelessWidget {
               ),
             ),
             const SizedBox(width: 8),
-            const Icon(
-              Icons.chevron_right,
-              color: Color(0xFF9CA3AF),
-              size: 22,
-            ),
+            const Icon(Icons.chevron_right, color: Color(0xFF9CA3AF), size: 22),
           ],
         ),
       ),

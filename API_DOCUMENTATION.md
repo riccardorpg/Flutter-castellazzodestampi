@@ -61,12 +61,45 @@ Content-Type: application/json
     "email": "utente@example.com",
     "name": "Mario",
     "surname": "Rossi",
-    "role": "ROLE_USER"
+    "role": "ROLE_USER",
+    "permissions": {
+      "segnalazioni": "rw"
+    }
   }
 }
 ```
 
 **Errori:** `400` — email/password mancanti · `401` — credenziali errate · `403` — account non attivo
+
+### Permessi sulle segnalazioni
+
+`user.permissions.segnalazioni` dice cosa può fare l'utente nell'app:
+
+| valore | significato | cosa succede nell'app |
+|--------|-------------|-----------------------|
+| `"rw"` | lettura e scrittura | accesso completo: menu "Nuova segnalazione", modifica ed eliminazione delle bozze |
+| `"r"` | sola lettura | si entra direttamente nell'elenco "Segnalazioni", che le mostra **tutte** (vedi § 6), con avviso in cima; niente creazione, modifica o eliminazione, e niente bozze locali |
+| `""`, `null`, `false`, chiave assente | nessun permesso | il login viene **rifiutato**: l'app mostra «Non hai i permessi per accedere alle segnalazioni» e non tiene il token |
+
+Sono accettati anche i sinonimi più comuni (`read`/`lettura`/`readonly` per la
+lettura, `write`/`read_write`/`scrittura`/`full` per la scrittura), il booleano
+`true` (= `rw`), l'oggetto `{"read": true, "write": false}` e le forme a lista
+`"permissions": ["segnalazioni_write"]` o `"roles": ["ROLE_SEGNALAZIONI_READ"]`.
+
+Se la risposta **non contiene nessuna informazione sui permessi** (solo `role`,
+come nelle versioni precedenti dell'API) l'app assume lettura e scrittura, per
+non bloccare gli utenti esistenti.
+
+Il permesso viene salvato sul dispositivo insieme al token, perché al riavvio
+dell'app il login non viene rifatto. Per togliere i permessi a un utente già
+connesso serve quindi invalidare il token lato server: alla prima chiamata
+l'app riceve il `401`, cancella token e permesso e torna al login.
+
+Lato server i permessi sono **verificati anche sugli endpoint di scrittura**
+(`POST /api/segnalazioni`, `POST /api/segnalazioni/{id}`,
+`POST /api/segnalazioni/{id}/elimina`): un utente in sola lettura riceve
+`403 "L'account ha le segnalazioni in sola lettura."`. Il blocco nell'app è
+solo per l'interfaccia.
 
 ---
 
@@ -198,8 +231,18 @@ GET /api/segnalazioni
 X-AUTH-TOKEN: <token>
 ```
 
-Restituisce tutte le segnalazioni dell'utente autenticato, ordinate per data decrescente.
-Ogni segnalazione include già `attachments[]`.
+Ordinate per data decrescente; ogni segnalazione include già `attachments[]`.
+
+**Cosa contiene l'elenco dipende dal permesso:**
+
+| permesso | segnalazioni restituite |
+|----------|-------------------------|
+| `"rw"` | solo quelle inserite dall'utente autenticato — le stesse che può modificare |
+| `"r"` | **tutte** le segnalazioni, come nel back-office |
+
+La sola lettura è un ruolo di consultazione: senza la scrittura l'utente non può
+essere autore di nulla, quindi filtrare per autore gli lascerebbe un elenco
+sempre vuoto.
 
 **Risposta successo (200):**
 
@@ -225,7 +268,8 @@ Ogni segnalazione include già `attachments[]`.
       "attachments": [
         {
           "file_name": "foto.jpg",
-          "file_path": "/uploads/reports/15/foto.jpg",
+          "file_path": "https://www.castellazzodestampi.org/uploads/reports/15/foto.jpg",
+          "thumb_path": "https://www.castellazzodestampi.org/uploads/reports/15/thumb_foto.jpg",
           "file_type": "image/jpg",
           "uploaded_at": "2026-04-16 10:00:00"
         }
@@ -254,9 +298,10 @@ GET /api/segnalazioni/{id}
 X-AUTH-TOKEN: <token>
 ```
 
-Stessa struttura della lista. L'utente può vedere solo le proprie segnalazioni.
+Stessa struttura della lista, e stessa visibilità: chi ha `rw` apre solo le
+proprie segnalazioni, chi ha `r` apre qualsiasi segnalazione dell'elenco.
 
-**Errori:** `404` — segnalazione non trovata o non appartenente all'utente
+**Errori:** `404` — segnalazione non trovata o non visibile all'utente
 
 ---
 
@@ -332,16 +377,23 @@ Gli allegati sono gestiti via **filesystem** (cartella `/uploads/reports/{id}/`)
 "attachments": [
   {
     "file_name": "foto.jpg",
-    "file_path": "/uploads/reports/42/foto.jpg",
+    "file_path": "https://www.castellazzodestampi.org/uploads/reports/42/foto.jpg",
+    "thumb_path": "https://www.castellazzodestampi.org/uploads/reports/42/thumb_foto.jpg",
     "file_type": "image/jpg",
     "uploaded_at": "2026-04-16 10:00:00"
   }
 ]
 ```
 
-**URL completo foto:** `https://www.castellazzodestampi.org` + `file_path`
+| campo | descrizione |
+|-------|-------------|
+| `file_path` | **URL completo** dell immagine originale |
+| `thumb_path` | **URL completo** della miniatura 300px (ricade su `file_path` se la miniatura non esiste) |
 
-Esempio: `https://www.castellazzodestampi.org/uploads/reports/42/foto.jpg`
+`file_path` e `thumb_path` sono URL assoluti, comprensivi di host e di eventuale
+sottocartella dell installazione: vanno usati cosi come sono, senza premettere
+il baseUrl. Nell app il passaggio e` centralizzato in `ApiService.mediaUrl()`,
+che risolve anche i percorsi relativi delle versioni precedenti.
 
 `attachments` è presente sia nella lista che nel dettaglio; array vuoto `[]` se non ci sono file.
 
