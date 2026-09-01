@@ -25,6 +25,33 @@ class _SchedaScreenState extends State<SchedaScreen> {
   /// Bozza locale: non e' mai stata inviata al Comune.
   bool get _isDraft => DraftStore.isLocal(report);
 
+  /// Segnalazione ancora modificabile: solo le proprie, ancora in attesa
+  /// di essere presa in carico. Sono gli stessi stati accettati dall'API,
+  /// che rifiuta comunque le altre.
+  bool get _canEditReport =>
+      !_isDraft && ApiService.canWrite && report['status'] == 'pending';
+
+  @override
+  void initState() {
+    super.initState();
+    // La scheda arriva con i dati dell'elenco, che possono essere vecchi
+    // di qualche minuto: lo stato lo cambia il Comune, non l'app.
+    if (!_isDraft) _refresh();
+  }
+
+  /// Rilegge la segnalazione dal server. In silenzio: se la rete non
+  /// risponde restano i dati con cui la scheda si e' aperta.
+  Future<void> _refresh() async {
+    final id = report['id']?.toString();
+    if (id == null || id.isEmpty) return;
+    final result = await ApiService.getReportDetail(id);
+    if (!mounted) return;
+    final data = result['data'];
+    if (result['success'] == true && data is Map) {
+      setState(() => _report = Map<String, dynamic>.from(data));
+    }
+  }
+
   /// Percorsi delle foto della bozza ancora presenti sul dispositivo.
   List<String> get _localImages => List<String>.from(
     (report['image_paths'] as List? ?? const [])
@@ -175,6 +202,76 @@ class _SchedaScreenState extends State<SchedaScreen> {
     await DraftStore.delete(report['id'].toString());
     if (!mounted) return;
     Navigator.pop(context);
+  }
+
+  // ── Modifica / eliminazione segnalazione inviata ───────────────
+
+  /// Riapre nel form una segnalazione ancora in attesa. Al ritorno la
+  /// scheda si rilegge dal server: e' li' che il form ha salvato.
+  Future<void> _editReport() async {
+    final type = report['type'] as Map<String, dynamic>? ?? const {};
+    final saved = await Navigator.push<bool>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => FormScreen(
+          reportType: Map<String, dynamic>.from(type),
+          report: report,
+        ),
+      ),
+    );
+    if (!mounted || saved != true) return;
+    await _refresh();
+  }
+
+  Future<void> _deleteReport() async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text(
+          'Eliminare la segnalazione?',
+          style: TextStyle(fontFamily: 'Inter', fontSize: 17),
+        ),
+        content: const Text(
+          'La segnalazione verra\' ritirata e cancellata dal Comune. '
+          'L\'operazione non si puo\' annullare.',
+          style: TextStyle(fontFamily: 'Inter', fontSize: 14),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Annulla', style: TextStyle(fontFamily: 'Inter')),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text(
+              'Elimina',
+              style: TextStyle(fontFamily: 'Inter', color: Colors.redAccent),
+            ),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm != true || !mounted) return;
+
+    setState(() => _sending = true);
+    final result = await ApiService.deleteReport(report['id'].toString());
+    if (!mounted) return;
+    setState(() => _sending = false);
+
+    if (result['success'] == true) {
+      _showMessage('Segnalazione eliminata.');
+      Navigator.pop(context);
+    } else {
+      // Nel frattempo il Comune puo' averla presa in carico: in quel caso
+      // il server rifiuta, e la scheda si riallinea allo stato vero.
+      _showMessage(
+        result['message'] as String? ?? 'Errore durante l\'eliminazione.',
+        error: true,
+      );
+      await _refresh();
+    }
   }
 
   @override
@@ -347,11 +444,39 @@ class _SchedaScreenState extends State<SchedaScreen> {
         ),
       ),
       // Invia / Modifica / Elimina solo a chi ha anche la scrittura.
+      // Una segnalazione gia' presa in carico non ha piu' azioni: da li'
+      // in poi la gestisce il Comune.
       bottomNavigationBar: _isDraft && ApiService.canWrite
           ? _draftActions()
+          : _canEditReport
+          ? _reportActions()
           : null,
     );
   }
+
+  /// Barra azioni di una segnalazione ancora in attesa: si puo' correggere
+  /// o ritirare finche' il Comune non la prende in carico.
+  Widget _reportActions() => BottomActionBar(
+    children: [
+      Row(
+        children: [
+          Expanded(
+            child: SecondaryBarButton.danger(
+              label: 'Elimina',
+              onPressed: _sending ? null : _deleteReport,
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: SecondaryBarButton.neutral(
+              label: 'Modifica',
+              onPressed: _sending ? null : _editReport,
+            ),
+          ),
+        ],
+      ),
+    ],
+  );
 
   /// Barra azioni della bozza: stessi tre pulsanti del form.
   Widget _draftActions() => BottomActionBar(

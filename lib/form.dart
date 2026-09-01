@@ -15,7 +15,22 @@ class FormScreen extends StatefulWidget {
   /// e il salvataggio aggiorna la stessa bozza invece di crearne un'altra.
   final Map<String, dynamic>? draft;
 
-  const FormScreen({super.key, required this.reportType, this.draft});
+  /// Segnalazione gia' inviata e ancora "In attesa": il form parte
+  /// compilato con i dati del server e il salvataggio aggiorna quella
+  /// segnalazione (`POST /api/segnalazioni/{id}`) invece di crearne una
+  /// nuova. Le due modalita' si escludono a vicenda.
+  final Map<String, dynamic>? report;
+
+  const FormScreen({
+    super.key,
+    required this.reportType,
+    this.draft,
+    this.report,
+  }) : assert(
+         draft == null || report == null,
+         'Il form modifica una bozza locale oppure una segnalazione sul '
+         'server, non entrambe.',
+       );
 
   @override
   State<FormScreen> createState() => _FormScreenState();
@@ -42,6 +57,25 @@ class _FormScreenState extends State<FormScreen> {
   String? _draftId;
 
   bool get _isEditingDraft => _draftId != null;
+
+  /// Id della segnalazione sul server in modifica.
+  String? _reportId;
+
+  bool get _isEditingReport => _reportId != null;
+
+  /// Foto gia' caricate sul server: si possono guardare ma non togliere,
+  /// perche' l'API accetta solo nuovi allegati e non ne cancella.
+  List<Map<String, dynamic>> _uploaded = const [];
+
+  /// Valori con cui il form si e' aperto in modifica: servono a capire se
+  /// c'e' davvero qualcosa da perdere prima di chiedere conferma.
+  String _initialDetails = '';
+  String _initialAddress = '';
+
+  bool get _hasChanges =>
+      _detailsController.text.trim() != _initialDetails ||
+      _addressController.text.trim() != _initialAddress ||
+      _images.isNotEmpty;
 
   /// Bounding box del Comune di Corbetta: fuori da qui la segnalazione
   /// non viene accettata (stesso vincolo applicato lato server).
@@ -71,18 +105,51 @@ class _FormScreenState extends State<FormScreen> {
   void initState() {
     super.initState();
     final draft = widget.draft;
-    if (draft == null) return;
-    // Riapre la bozza dove era stata lasciata; le foto sparite dalla
-    // cache del telefono vengono semplicemente ignorate.
-    _draftId = draft['id']?.toString();
-    _detailsController.text = draft['details'] as String? ?? '';
-    final savedAddress = draft['address'] as String? ?? '';
-    _addressController.text = savedAddress;
-    _latitude = double.tryParse(draft['latitude']?.toString() ?? '');
-    _longitude = double.tryParse(draft['longitude']?.toString() ?? '');
+    final report = widget.report;
+    final source = draft ?? report;
+    if (source == null) return;
 
-    // L'indirizzo salvato nella bozza vale solo se risulta di Corbetta:
-    // altrimenti niente spunta e va riconfermato prima dell'invio.
+    if (draft != null) {
+      _draftId = draft['id']?.toString();
+    } else {
+      _reportId = report!['id']?.toString();
+    }
+
+    _prefill(source);
+
+    if (draft != null) {
+      // Riapre la bozza dove era stata lasciata; le foto sparite dalla
+      // cache del telefono vengono semplicemente ignorate.
+      _images = (draft['image_paths'] as List? ?? const [])
+          .map((p) => p.toString())
+          .where((p) => File(p).existsSync())
+          .map(XFile.new)
+          .toList();
+    } else {
+      // Le foto della segnalazione stanno sul server: si mostrano a parte,
+      // non modificabili. Quelle scelte qui si aggiungono a quelle.
+      _uploaded = List<Map<String, dynamic>>.from(
+        (report!['attachments'] as List? ?? const []).whereType<Map>().map(
+          (a) => Map<String, dynamic>.from(a),
+        ),
+      );
+    }
+  }
+
+  /// Riempie i campi con i dati salvati, di una bozza o di una
+  /// segnalazione: la lettura e' identica nei due casi.
+  void _prefill(Map<String, dynamic> source) {
+    _detailsController.text = source['details'] as String? ?? '';
+    final savedAddress = source['address'] as String? ?? '';
+    _addressController.text = savedAddress;
+    _latitude = double.tryParse(source['latitude']?.toString() ?? '');
+    _longitude = double.tryParse(source['longitude']?.toString() ?? '');
+
+    _initialDetails = _detailsController.text.trim();
+    _initialAddress = savedAddress.trim();
+
+    // L'indirizzo salvato vale solo se risulta di Corbetta: altrimenti
+    // niente spunta e va riconfermato prima di salvare.
     if (_latitude != null &&
         _longitude != null &&
         _isInCorbetta(_latitude!, _longitude!) &&
@@ -92,11 +159,6 @@ class _FormScreenState extends State<FormScreen> {
       _latitude = null;
       _longitude = null;
     }
-    _images = (draft['image_paths'] as List? ?? const [])
-        .map((p) => p.toString())
-        .where((p) => File(p).existsSync())
-        .map(XFile.new)
-        .toList();
   }
 
   @override
@@ -646,7 +708,8 @@ class _FormScreenState extends State<FormScreen> {
       _addressController.text.trim().isNotEmpty ||
       _images.isNotEmpty;
 
-  /// Invia la segnalazione al Comune.
+  /// Invia la segnalazione al Comune, o ne salva le modifiche se era
+  /// gia' stata inviata.
   Future<void> _submit() => _save(draft: false);
 
   /// Salva la bozza solo sul dispositivo: non viene inviata al Comune
@@ -704,15 +767,28 @@ class _FormScreenState extends State<FormScreen> {
       return;
     }
 
-    final result = await ApiService.createReport(
-      typeId: widget.reportType['id'].toString(),
-      details: _detailsController.text.trim(),
-      address: _addressController.text.trim(),
-      latitude: _latitude?.toString(),
-      longitude: _longitude?.toString(),
-      imagePaths: _images.map((x) => x.path).toList(),
-      status: draft ? 'in_creazione' : 'pending',
-    );
+    // Segnalazione gia' inviata: si aggiorna quella, restando "In attesa".
+    // Le foto scelte ora si aggiungono a quelle gia' sul server.
+    final result = _isEditingReport
+        ? await ApiService.updateReport(
+            id: _reportId!,
+            typeId: widget.reportType['id'].toString(),
+            details: _detailsController.text.trim(),
+            address: _addressController.text.trim(),
+            latitude: _latitude?.toString(),
+            longitude: _longitude?.toString(),
+            imagePaths: _images.map((x) => x.path).toList(),
+            status: 'pending',
+          )
+        : await ApiService.createReport(
+            typeId: widget.reportType['id'].toString(),
+            details: _detailsController.text.trim(),
+            address: _addressController.text.trim(),
+            latitude: _latitude?.toString(),
+            longitude: _longitude?.toString(),
+            imagePaths: _images.map((x) => x.path).toList(),
+            status: draft ? 'in_creazione' : 'pending',
+          );
 
     if (!mounted) return;
     setState(() => _loading = false);
@@ -721,15 +797,22 @@ class _FormScreenState extends State<FormScreen> {
       // Inviata: la copia locale non serve piu'.
       if (_draftId != null) await DraftStore.delete(_draftId!);
       if (!mounted) return;
-      _finish('Segnalazione inviata.');
+      _finish(
+        _isEditingReport ? 'Segnalazione aggiornata.' : 'Segnalazione inviata.',
+      );
     } else {
-      setState(() =>
-          _error = result['message'] as String? ?? 'Errore durante l\'invio.');
+      setState(
+        () => _error =
+            result['message'] as String? ??
+            (_isEditingReport
+                ? 'Errore durante il salvataggio.'
+                : 'Errore durante l\'invio.'),
+      );
     }
   }
 
   /// Conferma e chiude il form: tornando alla scheda se si stava
-  /// modificando una bozza, altrimenti all'elenco delle segnalazioni.
+  /// modificando una bozza o una segnalazione, altrimenti all'elenco.
   void _finish(String message) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
@@ -737,8 +820,9 @@ class _FormScreenState extends State<FormScreen> {
         content: Text(message, style: const TextStyle(fontFamily: 'Inter')),
       ),
     );
-    if (_isEditingDraft) {
-      Navigator.pop(context);
+    if (_isEditingDraft || _isEditingReport) {
+      // true: la scheda da cui si arriva ricarica i dati dal server.
+      Navigator.pop(context, true);
       return;
     }
     Navigator.pushReplacement(
@@ -748,8 +832,15 @@ class _FormScreenState extends State<FormScreen> {
   }
 
   /// Annulla la compilazione; se ci sono dati chiede conferma.
+  ///
+  /// Modificando una segnalazione gia' inviata non si perde la
+  /// segnalazione, solo le modifiche appena fatte: il messaggio cambia,
+  /// altrimenti sembra che si stia buttando via tutto.
   Future<void> _cancel() async {
-    if (!_hasContent) {
+    // Su una segnalazione gia' inviata i campi sono pieni fin dall'inizio:
+    // conta se sono stati cambiati, non se contengono qualcosa.
+    final somethingToLose = _isEditingReport ? _hasChanges : _hasContent;
+    if (!somethingToLose) {
       Navigator.pop(context);
       return;
     }
@@ -757,22 +848,35 @@ class _FormScreenState extends State<FormScreen> {
     final discard = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Annullare la segnalazione?',
-            style: TextStyle(fontFamily: 'Inter', fontSize: 17)),
-        content: const Text(
-          'I dati inseriti andranno persi. Puoi invece salvarla come bozza.',
-          style: TextStyle(fontFamily: 'Inter', fontSize: 14),
+        title: Text(
+          _isEditingReport
+              ? 'Annullare le modifiche?'
+              : 'Annullare la segnalazione?',
+          style: const TextStyle(fontFamily: 'Inter', fontSize: 17),
+        ),
+        content: Text(
+          _isEditingReport
+              ? 'Le modifiche non salvate andranno perse. La segnalazione resta come e\' stata inviata.'
+              : 'I dati inseriti andranno persi. Puoi invece salvarla come bozza.',
+          style: const TextStyle(fontFamily: 'Inter', fontSize: 14),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Continua a compilare',
-                style: TextStyle(fontFamily: 'Inter')),
+            child: Text(
+              _isEditingReport ? 'Continua a modificare' : 'Continua a compilare',
+              style: const TextStyle(fontFamily: 'Inter'),
+            ),
           ),
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Annulla segnalazione',
-                style: TextStyle(fontFamily: 'Inter', color: Colors.redAccent)),
+            child: Text(
+              _isEditingReport ? 'Annulla modifiche' : 'Annulla segnalazione',
+              style: const TextStyle(
+                fontFamily: 'Inter',
+                color: Colors.redAccent,
+              ),
+            ),
           ),
         ],
       ),
@@ -799,7 +903,11 @@ class _FormScreenState extends State<FormScreen> {
           onPressed: _loading ? null : _cancel,
         ),
         title: Text(
-          _isEditingDraft ? 'Modifica bozza' : 'Nuova Segnalazione',
+          _isEditingReport
+              ? 'Modifica segnalazione'
+              : _isEditingDraft
+              ? 'Modifica bozza'
+              : 'Nuova Segnalazione',
           style: const TextStyle(
             color: Color(0xFF111111),
             fontSize: 18,
@@ -1016,6 +1124,52 @@ class _FormScreenState extends State<FormScreen> {
                     // ── Foto (opzionale) ──────────────────────────
                     _sectionLabel('FOTO (opzionale)'),
                     const SizedBox(height: 8),
+
+                    // Foto gia' inviate: si vedono ma non si tolgono,
+                    // l'API accetta nuovi allegati e non ne cancella.
+                    if (_uploaded.isNotEmpty) ...[
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: _uploaded.map((a) {
+                          final url = ApiService.mediaUrl(
+                            (a['thumb_path'] ?? a['file_path']) as String?,
+                          );
+                          return ClipRRect(
+                            borderRadius: BorderRadius.circular(8),
+                            child: url == null
+                                ? const SizedBox(width: 80, height: 80)
+                                : Image.network(
+                                    url,
+                                    width: 80,
+                                    height: 80,
+                                    fit: BoxFit.cover,
+                                    errorBuilder: (_, _, _) => Container(
+                                      width: 80,
+                                      height: 80,
+                                      color: const Color(0xFFF3F4F6),
+                                      child: const Icon(
+                                        Icons.broken_image_outlined,
+                                        size: 18,
+                                        color: Color(0xFF9CA3AF),
+                                      ),
+                                    ),
+                                  ),
+                          );
+                        }).toList(),
+                      ),
+                      const SizedBox(height: 6),
+                      const Text(
+                        'Le foto gia\' inviate non si possono togliere dall\'app.',
+                        style: TextStyle(
+                          color: Color(0xFF9CA3AF),
+                          fontSize: 11,
+                          fontFamily: 'Inter',
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                    ],
+
                     if (_images.isNotEmpty) ...[
                       Wrap(
                         spacing: 8,
@@ -1118,17 +1272,20 @@ class _FormScreenState extends State<FormScreen> {
           BottomActionBar(
             children: [
               // Salva come bozza: il pulsante piccolo sta sempre sopra
-              // l'azione principale.
-              SizedBox(
-                width: double.infinity,
-                child: SecondaryBarButton.green(
-                  label: 'Salva bozza',
-                  onPressed: _loading ? null : _saveDraft,
+              // l'azione principale. Non compare su una segnalazione gia'
+              // inviata: dal Comune non torna indietro a bozza.
+              if (!_isEditingReport) ...[
+                SizedBox(
+                  width: double.infinity,
+                  child: SecondaryBarButton.green(
+                    label: 'Salva bozza',
+                    onPressed: _loading ? null : _saveDraft,
+                  ),
                 ),
-              ),
-              const SizedBox(height: 10),
+                const SizedBox(height: 10),
+              ],
               PrimaryBarButton(
-                label: 'INVIA',
+                label: _isEditingReport ? 'SALVA MODIFICHE' : 'INVIA',
                 loading: _loading,
                 onPressed: _submit,
               ),
