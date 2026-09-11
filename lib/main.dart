@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'login.dart';
 import 'form.dart';
 import 'segnalazioni.dart';
 import 'services/api_service.dart';
+import 'utils/responsive.dart';
+import 'widgets/bottom_nav_bar.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -18,6 +21,34 @@ class MyApp extends StatelessWidget {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
       title: 'Castellazzo dei Stampi',
+      // Le AppBar sono bianche: le icone di sistema in cima vanno forzate
+      // scure, altrimenti su alcuni Android restano bianche su bianco e
+      // ora'/batteria spariscono.
+      theme: ThemeData(
+        appBarTheme: const AppBarTheme(
+          systemOverlayStyle: SystemUiOverlayStyle(
+            statusBarColor: Colors.transparent,
+            statusBarIconBrightness: Brightness.dark,
+            statusBarBrightness: Brightness.light,
+          ),
+        ),
+      ),
+      // I caratteri di sistema molto grandi (Android "Dimensioni
+      // carattere", iOS "Testo piu' grande") arrivavano fino a 2x e
+      // facevano sfondare barre e card. Restano regolabili, ma entro un
+      // limite che le schermate reggono.
+      builder: (context, child) {
+        final media = MediaQuery.of(context);
+        return MediaQuery(
+          data: media.copyWith(
+            textScaler: media.textScaler.clamp(
+              minScaleFactor: 0.9,
+              maxScaleFactor: 1.35,
+            ),
+          ),
+          child: child ?? const SizedBox.shrink(),
+        );
+      },
       home: FutureBuilder<bool>(
         future: ApiService.loadToken(),
         builder: (context, snapshot) {
@@ -25,20 +56,12 @@ class MyApp extends StatelessWidget {
             return const _SplashScreen();
           }
           if (!snapshot.data!) return const LoginScreen();
-          // Chi ha la sola lettura non passa dal menu "Nuova
-          // segnalazione": la sua schermata iniziale e' l'elenco.
-          return ApiService.canWrite
-              ? const MenuScreen()
-              : const SegnalazioniScreen();
+          // Chi ha un accesso all'app e' un cittadino che segnala: la
+          // schermata iniziale e' sempre il menu dei tipi.
+          return const MenuScreen();
         },
       ),
-      routes: {
-        // Anche arrivandoci per route, senza scrittura il menu delle
-        // nuove segnalazioni non si apre.
-        '/menu': (_) => ApiService.canWrite
-            ? const MenuScreen()
-            : const SegnalazioniScreen(),
-      },
+      routes: {'/menu': (_) => const MenuScreen()},
     );
   }
 }
@@ -48,12 +71,17 @@ class _SplashScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Il logo occupa una quota della larghezza, con un minimo e un
+    // massimo: resta leggibile su un telefono stretto e non diventa un
+    // cartellone su un iPad.
+    final logoSize = (context.screenWidth * 0.4).clamp(120.0, 240.0);
+
     return Scaffold(
       backgroundColor: Colors.white,
       body: Center(
         child: Image.asset(
           'android/app/src/main/res/drawable/logo.png',
-          width: 160,
+          width: logoSize,
         ),
       ),
     );
@@ -122,11 +150,16 @@ class _MenuScreenState extends State<MenuScreen> {
           padding: const EdgeInsets.all(8),
           child: Image.asset('android/app/src/main/res/drawable/logo.png'),
         ),
-        title: const Text(
+        // Titolo lungo + logo + pulsante esci: su un telefono da 320dp
+        // non ci sta a 18px, quindi si rimpicciolisce invece di essere
+        // tagliato a meta'.
+        title: Text(
           'NUOVA SEGNALAZIONE',
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
           style: TextStyle(
-            color: Color(0xFF111111),
-            fontSize: 18,
+            color: const Color(0xFF111111),
+            fontSize: context.isNarrowScreen ? 15 : context.adaptive(18),
             fontFamily: 'Inter',
             fontWeight: FontWeight.bold,
           ),
@@ -147,33 +180,12 @@ class _MenuScreenState extends State<MenuScreen> {
         ],
       ),
       body: _buildBody(),
-      bottomNavigationBar: GestureDetector(
+      bottomNavigationBar: BottomNavBar(
+        icon: Icons.list_alt,
+        label: 'Le mie segnalazioni',
         onTap: () => Navigator.push(
           context,
           MaterialPageRoute(builder: (_) => const SegnalazioniScreen()),
-        ),
-        child: Container(
-          height: 68,
-          decoration: const BoxDecoration(
-            color: Colors.white,
-            border: Border(top: BorderSide(color: Color(0xFFE5E7EB))),
-          ),
-          child: const Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(Icons.list_alt, color: Color(0xFF666666), size: 22),
-              SizedBox(width: 10),
-              Text(
-                'Le mie segnalazioni',
-                style: TextStyle(
-                  color: Color(0xFF666666),
-                  fontSize: 14,
-                  fontFamily: 'Inter',
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ],
-          ),
         ),
       ),
     );
@@ -187,29 +199,34 @@ class _MenuScreenState extends State<MenuScreen> {
     }
     if (_error != null) {
       return Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              _error!,
-              style: const TextStyle(color: Colors.red, fontFamily: 'Inter'),
-            ),
-            const SizedBox(height: 16),
-            ElevatedButton(
-              onPressed: () {
-                setState(() {
-                  _loading = true;
-                  _error = null;
-                });
-                _loadReportTypes();
-              },
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF7BA566),
-                foregroundColor: Colors.white,
+        child: Padding(
+          // Senza margini un errore lungo arrivava a filo dei bordi.
+          padding: context.centeredPadding(horizontal: 32),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                _error!,
+                textAlign: TextAlign.center,
+                style: const TextStyle(color: Colors.red, fontFamily: 'Inter'),
               ),
-              child: const Text('Riprova'),
-            ),
-          ],
+              const SizedBox(height: 16),
+              ElevatedButton(
+                onPressed: () {
+                  setState(() {
+                    _loading = true;
+                    _error = null;
+                  });
+                  _loadReportTypes();
+                },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF7BA566),
+                  foregroundColor: Colors.white,
+                ),
+                child: const Text('Riprova'),
+              ),
+            ],
+          ),
         ),
       );
     }
@@ -222,8 +239,10 @@ class _MenuScreenState extends State<MenuScreen> {
       );
     }
     return ListView.builder(
-      // piu' spazio sopra la prima card
-      padding: const EdgeInsets.fromLTRB(16, 28, 16, 16),
+      // piu' spazio sopra la prima card; ai lati il padding cresce sui
+      // tablet in modo che le card restino centrate e leggibili invece
+      // di allungarsi da bordo a bordo
+      padding: context.centeredPadding(top: 28, bottom: 16),
       itemCount: _reportTypes.length,
       itemBuilder: (context, index) {
         final type = _reportTypes[index];
@@ -278,12 +297,18 @@ class _ReportTypeCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final desc = description?.trim() ?? '';
+    // Tutte le misure della card partono dal formato telefono e crescono
+    // su tablet, cosi' il rapporto fra quadrato, icona e testo resta lo
+    // stesso su ogni schermo.
+    final squareSize = context.adaptive(56, tablet: 68);
+    final iconSize = squareSize * 0.7;
+    final fallbackIconSize = squareSize * 0.46;
 
     return GestureDetector(
       onTap: onTap,
       child: Container(
         margin: const EdgeInsets.only(bottom: 12),
-        padding: const EdgeInsets.all(14),
+        padding: EdgeInsets.all(context.adaptive(14, tablet: 18)),
         decoration: BoxDecoration(
           color: Colors.white,
           borderRadius: BorderRadius.circular(16),
@@ -300,8 +325,8 @@ class _ReportTypeCard extends StatelessWidget {
           children: [
             // ── Quadrato verde ──────────────────────────────────
             Container(
-              width: 56, // <-- grandezza quadrato
-              height: 56, // <-- grandezza quadrato
+              width: squareSize, // <-- grandezza quadrato
+              height: squareSize, // <-- grandezza quadrato
               decoration: BoxDecoration(
                 color: const Color(0xFFEDF5E9),
                 borderRadius: BorderRadius.circular(12),
@@ -312,38 +337,38 @@ class _ReportTypeCard extends StatelessWidget {
                         // ── Icona SVG ──────────────────────────────
                         ? SvgPicture.network(
                             iconUrl!,
-                            width: 40, // <-- grandezza icona SVG
-                            height: 40, // <-- grandezza icona SVG
+                            width: iconSize, // <-- grandezza icona SVG
+                            height: iconSize, // <-- grandezza icona SVG
                             fit: BoxFit.contain,
                             colorFilter: const ColorFilter.mode(
                               Color(0xFF7BA566),
                               BlendMode.srcIn,
                             ),
-                            placeholderBuilder: (_) => const Icon(
+                            placeholderBuilder: (_) => Icon(
                               Icons.report_problem,
-                              color: Color(0xFF7BA566),
-                              size: 26,
+                              color: const Color(0xFF7BA566),
+                              size: fallbackIconSize,
                             ),
                           )
                         // ── Icona PNG/JPG ───────────────────────────
                         : Image.network(
                             iconUrl!,
-                            width: 40, // <-- grandezza icona PNG
-                            height: 40, // <-- grandezza icona PNG
+                            width: iconSize, // <-- grandezza icona PNG
+                            height: iconSize, // <-- grandezza icona PNG
                             fit: BoxFit.contain,
-                            errorBuilder: (_, _, _) => const Icon(
+                            errorBuilder: (_, _, _) => Icon(
                               Icons.report_problem,
-                              color: Color(0xFF7BA566),
-                              size: 26,
+                              color: const Color(0xFF7BA566),
+                              size: fallbackIconSize,
                             ),
                           )
-                  : const Icon(
+                  : Icon(
                       Icons.report_problem,
-                      color: Color(0xFF7BA566),
-                      size: 26,
+                      color: const Color(0xFF7BA566),
+                      size: fallbackIconSize,
                     ),
             ),
-            const SizedBox(width: 14),
+            SizedBox(width: context.adaptive(14, tablet: 18)),
             // ── Nome + descrizione ──────────────────────────────
             Expanded(
               child: Column(
@@ -352,9 +377,9 @@ class _ReportTypeCard extends StatelessWidget {
                 children: [
                   Text(
                     name,
-                    style: const TextStyle(
-                      color: Color(0xFF111111),
-                      fontSize: 15,
+                    style: TextStyle(
+                      color: const Color(0xFF111111),
+                      fontSize: context.adaptive(15, tablet: 17),
                       fontFamily: 'Inter',
                       fontWeight: FontWeight.w600,
                     ),
@@ -365,9 +390,9 @@ class _ReportTypeCard extends StatelessWidget {
                       desc,
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        color: Color(0xFF6B7280),
-                        fontSize: 13,
+                      style: TextStyle(
+                        color: const Color(0xFF6B7280),
+                        fontSize: context.adaptive(13, tablet: 14),
                         fontFamily: 'Inter',
                         height: 1.4,
                       ),
@@ -377,7 +402,11 @@ class _ReportTypeCard extends StatelessWidget {
               ),
             ),
             const SizedBox(width: 8),
-            const Icon(Icons.chevron_right, color: Color(0xFF9CA3AF), size: 22),
+            Icon(
+              Icons.chevron_right,
+              color: const Color(0xFF9CA3AF),
+              size: context.adaptive(22, tablet: 24),
+            ),
           ],
         ),
       ),

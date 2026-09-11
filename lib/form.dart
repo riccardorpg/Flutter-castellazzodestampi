@@ -6,6 +6,7 @@ import 'package:image_picker/image_picker.dart';
 import 'segnalazioni.dart';
 import 'services/api_service.dart';
 import 'services/draft_store.dart';
+import 'utils/responsive.dart';
 import 'widgets/action_bar.dart';
 
 class FormScreen extends StatefulWidget {
@@ -63,9 +64,22 @@ class _FormScreenState extends State<FormScreen> {
 
   bool get _isEditingReport => _reportId != null;
 
-  /// Foto gia' caricate sul server: si possono guardare ma non togliere,
-  /// perche' l'API accetta solo nuovi allegati e non ne cancella.
-  List<Map<String, dynamic>> _uploaded = const [];
+  /// Foto gia' caricate sul server. Si possono anche togliere: il pulsante
+  /// chiama l'API e la foto sparisce subito, senza passare dal salvataggio
+  /// (l'eliminazione e' definitiva nel momento in cui si conferma).
+  List<Map<String, dynamic>> _uploaded = [];
+
+  /// Eliminazione di una foto gia' caricata in corso: blocca i pulsanti
+  /// perche' non si mandino due richieste sulla stessa foto.
+  bool _deletingUploaded = false;
+
+  /// Almeno una foto e' stata tolta dal server durante questa modifica.
+  ///
+  /// L'eliminazione e' immediata e non passa dal salvataggio: anche
+  /// uscendo con "Annulla modifiche" o col tasto indietro, la scheda va
+  /// avvisata di ricaricare, altrimenti continua a mostrare una foto che
+  /// sul server non c'e' piu'.
+  bool _uploadedDeleted = false;
 
   /// Valori con cui il form si e' aperto in modifica: servono a capire se
   /// c'e' davvero qualcosa da perdere prima di chiedere conferma.
@@ -126,8 +140,8 @@ class _FormScreenState extends State<FormScreen> {
           .map(XFile.new)
           .toList();
     } else {
-      // Le foto della segnalazione stanno sul server: si mostrano a parte,
-      // non modificabili. Quelle scelte qui si aggiungono a quelle.
+      // Le foto della segnalazione stanno sul server: si mostrano a parte
+      // e si possono togliere una per una. Quelle scelte qui si aggiungono.
       _uploaded = List<Map<String, dynamic>>.from(
         (report!['attachments'] as List? ?? const []).whereType<Map>().map(
           (a) => Map<String, dynamic>.from(a),
@@ -187,7 +201,10 @@ class _FormScreenState extends State<FormScreen> {
       }
     });
     if (short) return;
-    _debounce = Timer(const Duration(milliseconds: 600), () => _searchAddress(value));
+    _debounce = Timer(
+      const Duration(milliseconds: 600),
+      () => _searchAddress(value),
+    );
   }
 
   /// Icona a lato del campo indirizzo: spunta verde solo quando il testo
@@ -230,13 +247,16 @@ class _FormScreenState extends State<FormScreen> {
   /// Numero civico scritto nel campo: "via Roma 12" → "12", "via Roma
   /// 12/a" → "12/a", "via Roma" → null. Si ferma a 4 cifre per non
   /// catturare il CAP.
-  static final RegExp _civicoDigitatoRe =
-      RegExp(r'(?:^|[\s,])(\d{1,4}(?:\s*[/-]\s*)?[a-zA-Z]?)\s*$');
+  static final RegExp _civicoDigitatoRe = RegExp(
+    r'(?:^|[\s,])(\d{1,4}(?:\s*[/-]\s*)?[a-zA-Z]?)\s*$',
+  );
 
   /// "Via Roma 12, Corbetta" → "Via Roma 12": il comune in coda e' il
   /// formato suggerito dal campo, ma nasconderebbe il civico.
-  static final RegExp _comuneInCodaRe =
-      RegExp(r'[,\s]+corbetta\.?$', caseSensitive: false);
+  static final RegExp _comuneInCodaRe = RegExp(
+    r'[,\s]+corbetta\.?$',
+    caseSensitive: false,
+  );
 
   static String _senzaComune(String query) =>
       query.trim().replaceAll(_comuneInCodaRe, '').trim();
@@ -318,8 +338,9 @@ class _FormScreenState extends State<FormScreen> {
   }
 
   /// Pezzo di indirizzo fatto di solo civico: "12", "12a", "12/A".
-  static final RegExp _soloCivicoRe =
-      RegExp(r'^\d{1,4}(?:\s*[/-]\s*)?[a-zA-Z]?$');
+  static final RegExp _soloCivicoRe = RegExp(
+    r'^\d{1,4}(?:\s*[/-]\s*)?[a-zA-Z]?$',
+  );
 
   /// Numero civico restituito dal geocoder nei campi strutturati.
   static String? _civicoOf(Map<String, dynamic> item) {
@@ -383,7 +404,8 @@ class _FormScreenState extends State<FormScreen> {
   /// risultato che risulta di Corbetta; in ogni altro caso, comune
   /// diverso o indirizzo non riconoscibile, viene scartato.
   static List<Map<String, dynamic>> _onlyCorbetta(
-      List<Map<String, dynamic>> results) {
+    List<Map<String, dynamic>> results,
+  ) {
     return results.where(_isCorbettaResult).toList();
   }
 
@@ -447,12 +469,14 @@ class _FormScreenState extends State<FormScreen> {
     await showDialog<void>(
       context: context,
       builder: (ctx) => AlertDialog(
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
-        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         title: Row(
           children: const [
-            Icon(Icons.location_off_outlined, color: Colors.redAccent, size: 20),
+            Icon(
+              Icons.location_off_outlined,
+              color: Colors.redAccent,
+              size: 20,
+            ),
             SizedBox(width: 8),
             Expanded(
               child: Text(
@@ -648,20 +672,28 @@ class _FormScreenState extends State<FormScreen> {
             mainAxisSize: MainAxisSize.min,
             children: [
               ListTile(
-                leading: const Icon(Icons.camera_alt_outlined,
-                    color: Color(0xFF7BA566)),
-                title: const Text('Scatta una foto',
-                    style: TextStyle(fontFamily: 'Inter')),
+                leading: const Icon(
+                  Icons.camera_alt_outlined,
+                  color: Color(0xFF7BA566),
+                ),
+                title: const Text(
+                  'Scatta una foto',
+                  style: TextStyle(fontFamily: 'Inter'),
+                ),
                 onTap: () {
                   Navigator.pop(ctx);
                   _pickFromCamera();
                 },
               ),
               ListTile(
-                leading: const Icon(Icons.photo_library_outlined,
-                    color: Color(0xFF7BA566)),
-                title: const Text('Scegli dalla galleria',
-                    style: TextStyle(fontFamily: 'Inter')),
+                leading: const Icon(
+                  Icons.photo_library_outlined,
+                  color: Color(0xFF7BA566),
+                ),
+                title: const Text(
+                  'Scegli dalla galleria',
+                  style: TextStyle(fontFamily: 'Inter'),
+                ),
                 onTap: () {
                   Navigator.pop(ctx);
                   _pickFromGallery();
@@ -679,8 +711,10 @@ class _FormScreenState extends State<FormScreen> {
       final photo = await _picker.pickImage(source: ImageSource.camera);
       if (photo != null) setState(() => _images = [..._images, photo]);
     } catch (_) {
-      setState(() => _error =
-          'Impossibile accedere alla fotocamera. Verifica i permessi nelle impostazioni.');
+      setState(
+        () => _error =
+            'Impossibile accedere alla fotocamera. Verifica i permessi nelle impostazioni.',
+      );
     }
   }
 
@@ -693,13 +727,94 @@ class _FormScreenState extends State<FormScreen> {
         final single = await _picker.pickImage(source: ImageSource.gallery);
         if (single != null) setState(() => _images = [..._images, single]);
       } catch (_) {
-        setState(() => _error =
-            'Impossibile accedere alla galleria. Verifica i permessi nelle impostazioni.');
+        setState(
+          () => _error =
+              'Impossibile accedere alla galleria. Verifica i permessi nelle impostazioni.',
+        );
       }
     }
   }
 
   void _removeImage(int index) => setState(() => _images.removeAt(index));
+
+  /// Elimina una foto gia' caricata sul server.
+  ///
+  /// Non aspetta il salvataggio: la foto sta sul server, quindi si cancella
+  /// subito. Per questo si chiede conferma. Se nel frattempo la segnalazione
+  /// e' stata presa in carico il server rifiuta, e il messaggio lo dice.
+  Future<void> _removeUploaded(int index) async {
+    final attachment = _uploaded[index];
+    final fileName = attachment['file_name'] as String? ?? '';
+    final reportId = _reportId;
+    if (fileName.isEmpty || reportId == null || _deletingUploaded) return;
+
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text(
+          'Eliminare la foto?',
+          style: TextStyle(fontFamily: 'Inter', fontSize: 17),
+        ),
+        content: const Text(
+          'La foto viene tolta subito dalla segnalazione. '
+          'L\'operazione non si puo\' annullare.',
+          style: TextStyle(fontFamily: 'Inter', fontSize: 14),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Annulla', style: TextStyle(fontFamily: 'Inter')),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text(
+              'Elimina',
+              style: TextStyle(fontFamily: 'Inter', color: Colors.redAccent),
+            ),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm != true || !mounted) return;
+
+    setState(() {
+      _deletingUploaded = true;
+      _error = null;
+    });
+
+    final result = await ApiService.deleteAttachment(reportId, fileName);
+    if (!mounted) return;
+
+    if (result['success'] == true) {
+      // La risposta riporta la segnalazione aggiornata: si riallineano le
+      // foto a quelle che il server ha davvero.
+      final data = result['data'];
+      setState(() {
+        _deletingUploaded = false;
+        // La foto sul server non c'e' piu': da qui in poi, comunque si
+        // esca dal form, la scheda deve ricaricare.
+        _uploadedDeleted = true;
+        if (data is Map && data['attachments'] is List) {
+          _uploaded = List<Map<String, dynamic>>.from(
+            (data['attachments'] as List).whereType<Map>().map(
+              (a) => Map<String, dynamic>.from(a),
+            ),
+          );
+        } else {
+          _uploaded.removeAt(index);
+        }
+      });
+    } else {
+      setState(() {
+        _deletingUploaded = false;
+        _error =
+            result['message'] as String? ??
+            'Non e\' stato possibile eliminare la foto.';
+      });
+    }
+  }
 
   // ── Salvataggio ────────────────────────────────────────────────
 
@@ -721,8 +836,9 @@ class _FormScreenState extends State<FormScreen> {
       // La bozza puo' restare incompleta: si aggiungono foto e dettagli
       // in un secondo momento, prima di inviarla.
       if (!_hasContent) {
-        setState(() =>
-            _error = 'Inserisci almeno una descrizione o un indirizzo.');
+        setState(
+          () => _error = 'Inserisci almeno una descrizione o un indirizzo.',
+        );
         return;
       }
     } else {
@@ -737,8 +853,10 @@ class _FormScreenState extends State<FormScreen> {
       // L'indirizzo deve essere stato confermato dalla ricerca o dal GPS:
       // senza coordinate non e' possibile verificare il territorio.
       if (!_hasValidPosition) {
-        setState(() => _error =
-            'Seleziona un indirizzo di Corbetta dai suggerimenti oppure usa la tua posizione.');
+        setState(
+          () => _error =
+              'Seleziona un indirizzo di Corbetta dai suggerimenti oppure usa la tua posizione.',
+        );
         return;
       }
     }
@@ -761,9 +879,11 @@ class _FormScreenState extends State<FormScreen> {
       );
       if (!mounted) return;
       setState(() => _loading = false);
-      _finish(_isEditingDraft
-          ? 'Bozza aggiornata.'
-          : 'Bozza salvata solo su questo dispositivo.');
+      _finish(
+        _isEditingDraft
+            ? 'Bozza aggiornata.'
+            : 'Bozza salvata solo su questo dispositivo.',
+      );
       return;
     }
 
@@ -841,7 +961,7 @@ class _FormScreenState extends State<FormScreen> {
     // conta se sono stati cambiati, non se contengono qualcosa.
     final somethingToLose = _isEditingReport ? _hasChanges : _hasContent;
     if (!somethingToLose) {
-      Navigator.pop(context);
+      _leave();
       return;
     }
 
@@ -864,7 +984,9 @@ class _FormScreenState extends State<FormScreen> {
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
             child: Text(
-              _isEditingReport ? 'Continua a modificare' : 'Continua a compilare',
+              _isEditingReport
+                  ? 'Continua a modificare'
+                  : 'Continua a compilare',
               style: const TextStyle(fontFamily: 'Inter'),
             ),
           ),
@@ -882,439 +1004,555 @@ class _FormScreenState extends State<FormScreen> {
       ),
     );
 
-    if (discard == true && mounted) Navigator.pop(context);
+    if (discard == true && mounted) _leave();
   }
+
+  /// Esce dal form senza salvare.
+  ///
+  /// Torna `true` alla scheda solo se una foto e' stata tolta dal server:
+  /// le modifiche ai campi si buttano via, ma quella cancellazione e' gia'
+  /// avvenuta e la scheda deve rileggere i dati per non mostrarla ancora.
+  void _leave() => Navigator.pop(context, _uploadedDeleted);
 
   // ── UI ─────────────────────────────────────────────────────────
 
   @override
   Widget build(BuildContext context) {
     final typeName = widget.reportType['name'] as String? ?? '';
+    // Miniature delle foto: 80 su telefono, piu' grandi su tablet, dove
+    // ce ne stanno comunque parecchie per riga.
+    final thumbSize = context.adaptive(80, tablet: 100);
 
-    return Scaffold(
-      backgroundColor: Colors.white,
-      appBar: AppBar(
+    // Il tasto indietro di Android e lo swipe indietro di iOS devono
+    // passare dallo stesso controllo della freccia in alto a sinistra:
+    // altrimenti si esce senza conferma e, soprattutto, senza dire alla
+    // scheda che una foto e' appena stata tolta dal server.
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, _) {
+        if (didPop || _loading) return;
+        _cancel();
+      },
+      child: Scaffold(
         backgroundColor: Colors.white,
-        elevation: 0,
-        centerTitle: true,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios_new,
-              color: Color(0xFF111111), size: 18),
-          onPressed: _loading ? null : _cancel,
-        ),
-        title: Text(
-          _isEditingReport
-              ? 'Modifica segnalazione'
-              : _isEditingDraft
-              ? 'Modifica bozza'
-              : 'Nuova Segnalazione',
-          style: const TextStyle(
-            color: Color(0xFF111111),
-            fontSize: 18,
-            fontFamily: 'Inter',
-            fontWeight: FontWeight.bold,
+        appBar: AppBar(
+          backgroundColor: Colors.white,
+          elevation: 0,
+          centerTitle: true,
+          leading: IconButton(
+            icon: const Icon(
+              Icons.arrow_back_ios_new,
+              color: Color(0xFF111111),
+              size: 18,
+            ),
+            onPressed: _loading ? null : _cancel,
+          ),
+          title: Text(
+            _isEditingReport
+                ? 'Modifica segnalazione'
+                : _isEditingDraft
+                ? 'Modifica bozza'
+                : 'Nuova Segnalazione',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              color: const Color(0xFF111111),
+              fontSize: context.isNarrowScreen ? 15 : context.adaptive(18),
+              fontFamily: 'Inter',
+              fontWeight: FontWeight.bold,
+            ),
           ),
         ),
-      ),
-      body: Column(
-        children: [
-          Expanded(
-            child: GestureDetector(
-              onTap: () {
-                _addressFocus.unfocus();
-                if (_suggestions.isNotEmpty) setState(() => _suggestions = []);
-              },
-              behavior: HitTestBehavior.opaque,
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.fromLTRB(24, 24, 24, 40),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // Badge tipo
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 12, vertical: 8),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFEDF5E9),
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          const Icon(Icons.label_outline,
-                              color: Color(0xFF7BA566), size: 16),
-                          const SizedBox(width: 6),
-                          Text(
-                            typeName,
-                            style: const TextStyle(
-                              color: Color(0xFF7BA566),
-                              fontSize: 13,
-                              fontFamily: 'Inter',
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(height: 24),
-
-                    // ── Descrizione ──────────────────────────────
-                    _sectionLabel('DESCRIZIONE DETTAGLIATA'),
-                    const SizedBox(height: 8),
-                    _fieldBox(
-                      child: TextField(
-                        controller: _detailsController,
-                        maxLines: 5,
-                        style: _inputStyle,
-                        decoration: const InputDecoration(
-                          hintText: 'Descrivi il problema nel dettaglio…',
-                          hintStyle: TextStyle(color: Color(0xFF9CA3AF)),
-                          border: InputBorder.none,
-                          contentPadding: EdgeInsets.all(14),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 20),
-
-                    // ── Indirizzo ────────────────────────────────
-                    _sectionLabel('INDIRIZZO *'),
-                    const SizedBox(height: 8),
-                    _fieldBox(
-                      child: TextField(
-                        controller: _addressController,
-                        focusNode: _addressFocus,
-                        style: _inputStyle,
-                        onChanged: _onAddressChanged,
-                        decoration: InputDecoration(
-                          hintText: 'Es. Via Roma 12, Corbetta…',
-                          hintStyle: const TextStyle(color: Color(0xFF9CA3AF)),
-                          prefixIcon: const Icon(Icons.location_on_outlined,
-                              color: Color(0xFF9CA3AF), size: 20),
-                          suffixIcon: _addressStatusIcon(),
-                          border: InputBorder.none,
-                          contentPadding:
-                              const EdgeInsets.symmetric(vertical: 16),
-                        ),
-                      ),
-                    ),
-
-                    // Solo indirizzi del Comune di Corbetta
-                    if (_suggestions.isEmpty && !_noResults) ...[
-                      const SizedBox(height: 6),
-                      const Text(
-                        'Sono ammesse solo segnalazioni nel territorio di Corbetta.',
-                        style: TextStyle(
-                          color: Color(0xFF9CA3AF),
-                          fontSize: 11,
-                          fontFamily: 'Inter',
-                        ),
-                      ),
-                    ],
-
-                    if (_noResults) ...[
-                      const SizedBox(height: 6),
-                      const Text(
-                        'Nessun indirizzo trovato a Corbetta.',
-                        style: TextStyle(
-                          color: Colors.redAccent,
-                          fontSize: 11,
-                          fontFamily: 'Inter',
-                        ),
-                      ),
-                    ],
-
-                    // Suggerimenti indirizzo
-                    if (_suggestions.isNotEmpty)
+        body: Column(
+          children: [
+            Expanded(
+              child: GestureDetector(
+                onTap: () {
+                  _addressFocus.unfocus();
+                  if (_suggestions.isNotEmpty) {
+                    setState(() => _suggestions = []);
+                  }
+                },
+                behavior: HitTestBehavior.opaque,
+                child: SingleChildScrollView(
+                  // Su tablet e iPad i campi restano in una colonna
+                  // centrata: a tutta larghezza sarebbero scomodissimi.
+                  padding: context.centeredPadding(
+                    horizontal: 24,
+                    top: 24,
+                    bottom: 40,
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // Badge tipo
                       Container(
-                        margin: const EdgeInsets.only(top: 4),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 8,
+                        ),
                         decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(10),
-                          border: Border.all(color: const Color(0xFFE5E7EB)),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.black.withValues(alpha: 0.08),
-                              blurRadius: 8,
-                              offset: const Offset(0, 3),
+                          color: const Color(0xFFEDF5E9),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(
+                              Icons.label_outline,
+                              color: Color(0xFF7BA566),
+                              size: 16,
+                            ),
+                            const SizedBox(width: 6),
+                            // Flexible: un tipo dal nome lungo va a capo
+                            // dentro il badge invece di uscire dallo
+                            // schermo su un telefono stretto.
+                            Flexible(
+                              child: Text(
+                                typeName,
+                                style: const TextStyle(
+                                  color: Color(0xFF7BA566),
+                                  fontSize: 13,
+                                  fontFamily: 'Inter',
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
                             ),
                           ],
                         ),
-                        child: Column(
-                          children: _suggestions.asMap().entries.map((e) {
-                            // In elenco si legge gia' col civico in coda
-                            // alla via, come verra' salvato.
-                            final name = _addressLabel(
-                              e.value,
-                              civicoDigitato:
-                                  _civicoDigitato(_addressController.text),
+                      ),
+                      const SizedBox(height: 24),
+
+                      // ── Descrizione ──────────────────────────────
+                      _sectionLabel('DESCRIZIONE DETTAGLIATA'),
+                      const SizedBox(height: 8),
+                      _fieldBox(
+                        child: TextField(
+                          controller: _detailsController,
+                          maxLines: 5,
+                          style: _inputStyle,
+                          decoration: const InputDecoration(
+                            hintText: 'Descrivi il problema nel dettaglio…',
+                            hintStyle: TextStyle(color: Color(0xFF9CA3AF)),
+                            border: InputBorder.none,
+                            contentPadding: EdgeInsets.all(14),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 20),
+
+                      // ── Indirizzo ────────────────────────────────
+                      _sectionLabel('INDIRIZZO *'),
+                      const SizedBox(height: 8),
+                      _fieldBox(
+                        child: TextField(
+                          controller: _addressController,
+                          focusNode: _addressFocus,
+                          style: _inputStyle,
+                          onChanged: _onAddressChanged,
+                          decoration: InputDecoration(
+                            hintText: 'Es. Via Roma 12, Corbetta…',
+                            hintStyle: const TextStyle(
+                              color: Color(0xFF9CA3AF),
+                            ),
+                            prefixIcon: const Icon(
+                              Icons.location_on_outlined,
+                              color: Color(0xFF9CA3AF),
+                              size: 20,
+                            ),
+                            suffixIcon: _addressStatusIcon(),
+                            border: InputBorder.none,
+                            contentPadding: const EdgeInsets.symmetric(
+                              vertical: 16,
+                            ),
+                          ),
+                        ),
+                      ),
+
+                      // Solo indirizzi del Comune di Corbetta
+                      if (_suggestions.isEmpty && !_noResults) ...[
+                        const SizedBox(height: 6),
+                        const Text(
+                          'Sono ammesse solo segnalazioni nel territorio di Corbetta.',
+                          style: TextStyle(
+                            color: Color(0xFF9CA3AF),
+                            fontSize: 11,
+                            fontFamily: 'Inter',
+                          ),
+                        ),
+                      ],
+
+                      if (_noResults) ...[
+                        const SizedBox(height: 6),
+                        const Text(
+                          'Nessun indirizzo trovato a Corbetta.',
+                          style: TextStyle(
+                            color: Colors.redAccent,
+                            fontSize: 11,
+                            fontFamily: 'Inter',
+                          ),
+                        ),
+                      ],
+
+                      // Suggerimenti indirizzo
+                      if (_suggestions.isNotEmpty)
+                        Container(
+                          margin: const EdgeInsets.only(top: 4),
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(color: const Color(0xFFE5E7EB)),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withValues(alpha: 0.08),
+                                blurRadius: 8,
+                                offset: const Offset(0, 3),
+                              ),
+                            ],
+                          ),
+                          // Su un telefono basso, con la tastiera aperta,
+                          // l'elenco dei suggerimenti non deve mangiarsi
+                          // tutta la pagina: oltre un terzo dello schermo
+                          // scorre al proprio interno.
+                          child: ConstrainedBox(
+                            constraints: BoxConstraints(
+                              maxHeight: context.screenHeight * 0.32,
+                            ),
+                            child: SingleChildScrollView(
+                              child: Column(
+                                children: _suggestions.asMap().entries.map((e) {
+                                  // In elenco si legge gia' col civico in coda
+                                  // alla via, come verra' salvato.
+                                  final name = _addressLabel(
+                                    e.value,
+                                    civicoDigitato: _civicoDigitato(
+                                      _addressController.text,
+                                    ),
+                                  );
+                                  return Column(
+                                    children: [
+                                      if (e.key > 0)
+                                        const Divider(
+                                          height: 1,
+                                          color: Color(0xFFF3F4F6),
+                                        ),
+                                      InkWell(
+                                        onTap: () => _selectSuggestion(e.value),
+                                        child: Padding(
+                                          padding: const EdgeInsets.symmetric(
+                                            horizontal: 14,
+                                            vertical: 12,
+                                          ),
+                                          child: Row(
+                                            children: [
+                                              const Icon(
+                                                Icons.location_on_outlined,
+                                                size: 14,
+                                                color: Color(0xFF7BA566),
+                                              ),
+                                              const SizedBox(width: 8),
+                                              Expanded(
+                                                child: Text(
+                                                  name,
+                                                  maxLines: 2,
+                                                  overflow:
+                                                      TextOverflow.ellipsis,
+                                                  style: const TextStyle(
+                                                    color: Color(0xFF333333),
+                                                    fontSize: 13,
+                                                    fontFamily: 'Inter',
+                                                  ),
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  );
+                                }).toList(),
+                              ),
+                            ),
+                          ),
+                        ),
+
+                      const SizedBox(height: 10),
+
+                      // Pulsante GPS (conta come indirizzo)
+                      SizedBox(
+                        width: double.infinity,
+                        child: OutlinedButton.icon(
+                          onPressed: _locating ? null : _getLocation,
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: const Color(0xFF7BA566),
+                            side: const BorderSide(color: Color(0xFF7BA566)),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            padding: const EdgeInsets.symmetric(vertical: 12),
+                          ),
+                          icon: _locating
+                              ? const SizedBox(
+                                  width: 14,
+                                  height: 14,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    color: Color(0xFF7BA566),
+                                  ),
+                                )
+                              : const Icon(Icons.my_location, size: 16),
+                          label: Text(
+                            _locating
+                                ? 'Acquisizione GPS…'
+                                : 'Usa la mia posizione',
+                            style: const TextStyle(
+                              fontFamily: 'Inter',
+                              fontSize: 13,
+                            ),
+                          ),
+                        ),
+                      ),
+
+                      const SizedBox(height: 20),
+
+                      // ── Foto (opzionale) ──────────────────────────
+                      _sectionLabel('FOTO (opzionale)'),
+                      const SizedBox(height: 8),
+
+                      // Foto gia' inviate: la x le elimina dal server subito,
+                      // con conferma, senza aspettare il salvataggio.
+                      if (_uploaded.isNotEmpty) ...[
+                        Wrap(
+                          spacing: 8,
+                          runSpacing: 8,
+                          children: List.generate(_uploaded.length, (i) {
+                            final url = ApiService.mediaUrl(
+                              (_uploaded[i]['thumb_path'] ??
+                                      _uploaded[i]['file_path'])
+                                  as String?,
                             );
-                            return Column(
+                            return Stack(
                               children: [
-                                if (e.key > 0)
-                                  const Divider(
-                                      height: 1, color: Color(0xFFF3F4F6)),
-                                InkWell(
-                                  onTap: () => _selectSuggestion(e.value),
-                                  child: Padding(
-                                    padding: const EdgeInsets.symmetric(
-                                        horizontal: 14, vertical: 12),
-                                    child: Row(
-                                      children: [
-                                        const Icon(Icons.location_on_outlined,
-                                            size: 14,
-                                            color: Color(0xFF7BA566)),
-                                        const SizedBox(width: 8),
-                                        Expanded(
-                                          child: Text(
-                                            name,
-                                            maxLines: 2,
-                                            overflow: TextOverflow.ellipsis,
-                                            style: const TextStyle(
-                                              color: Color(0xFF333333),
-                                              fontSize: 13,
-                                              fontFamily: 'Inter',
+                                ClipRRect(
+                                  borderRadius: BorderRadius.circular(8),
+                                  child: url == null
+                                      ? SizedBox(
+                                          width: thumbSize,
+                                          height: thumbSize,
+                                        )
+                                      : Image.network(
+                                          url,
+                                          width: thumbSize,
+                                          height: thumbSize,
+                                          fit: BoxFit.cover,
+                                          errorBuilder: (_, _, _) => Container(
+                                            width: thumbSize,
+                                            height: thumbSize,
+                                            color: const Color(0xFFF3F4F6),
+                                            child: const Icon(
+                                              Icons.broken_image_outlined,
+                                              size: 18,
+                                              color: Color(0xFF9CA3AF),
                                             ),
                                           ),
                                         ),
-                                      ],
+                                ),
+                                Positioned(
+                                  top: 2,
+                                  right: 2,
+                                  child: GestureDetector(
+                                    onTap: _deletingUploaded
+                                        ? null
+                                        : () => _removeUploaded(i),
+                                    child: Container(
+                                      decoration: BoxDecoration(
+                                        color: _deletingUploaded
+                                            ? Colors.black26
+                                            : Colors.black54,
+                                        shape: BoxShape.circle,
+                                      ),
+                                      child: const Icon(
+                                        Icons.close,
+                                        color: Colors.white,
+                                        size: 14,
+                                      ),
                                     ),
                                   ),
                                 ),
                               ],
                             );
-                          }).toList(),
+                          }),
                         ),
-                      ),
-
-                    const SizedBox(height: 10),
-
-                    // Pulsante GPS (conta come indirizzo)
-                    SizedBox(
-                      width: double.infinity,
-                      child: OutlinedButton.icon(
-                        onPressed: _locating ? null : _getLocation,
-                        style: OutlinedButton.styleFrom(
-                          foregroundColor: const Color(0xFF7BA566),
-                          side: const BorderSide(color: Color(0xFF7BA566)),
-                          shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(10)),
-                          padding: const EdgeInsets.symmetric(vertical: 12),
+                        const SizedBox(height: 6),
+                        const Text(
+                          'La x elimina subito la foto dalla segnalazione.',
+                          style: TextStyle(
+                            color: Color(0xFF9CA3AF),
+                            fontSize: 11,
+                            fontFamily: 'Inter',
+                          ),
                         ),
-                        icon: _locating
-                            ? const SizedBox(
-                                width: 14,
-                                height: 14,
-                                child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                    color: Color(0xFF7BA566)),
-                              )
-                            : const Icon(Icons.my_location, size: 16),
-                        label: Text(
-                          _locating
-                              ? 'Acquisizione GPS…'
-                              : 'Usa la mia posizione',
-                          style: const TextStyle(
-                              fontFamily: 'Inter', fontSize: 13),
-                        ),
-                      ),
-                    ),
+                        const SizedBox(height: 10),
+                      ],
 
-                    const SizedBox(height: 20),
-
-                    // ── Foto (opzionale) ──────────────────────────
-                    _sectionLabel('FOTO (opzionale)'),
-                    const SizedBox(height: 8),
-
-                    // Foto gia' inviate: si vedono ma non si tolgono,
-                    // l'API accetta nuovi allegati e non ne cancella.
-                    if (_uploaded.isNotEmpty) ...[
-                      Wrap(
-                        spacing: 8,
-                        runSpacing: 8,
-                        children: _uploaded.map((a) {
-                          final url = ApiService.mediaUrl(
-                            (a['thumb_path'] ?? a['file_path']) as String?,
-                          );
-                          return ClipRRect(
-                            borderRadius: BorderRadius.circular(8),
-                            child: url == null
-                                ? const SizedBox(width: 80, height: 80)
-                                : Image.network(
-                                    url,
-                                    width: 80,
-                                    height: 80,
+                      if (_images.isNotEmpty) ...[
+                        Wrap(
+                          spacing: 8,
+                          runSpacing: 8,
+                          children: List.generate(_images.length, (i) {
+                            return Stack(
+                              children: [
+                                ClipRRect(
+                                  borderRadius: BorderRadius.circular(8),
+                                  child: Image.file(
+                                    File(_images[i].path),
+                                    width: thumbSize,
+                                    height: thumbSize,
                                     fit: BoxFit.cover,
-                                    errorBuilder: (_, _, _) => Container(
-                                      width: 80,
-                                      height: 80,
-                                      color: const Color(0xFFF3F4F6),
+                                    // decodifica alla misura dell'anteprima
+                                    // (x3 per gli schermi ad alta densita'):
+                                    // a piena risoluzione sprecherebbe memoria
+                                    cacheWidth: (thumbSize * 3).round(),
+                                  ),
+                                ),
+                                Positioned(
+                                  top: 2,
+                                  right: 2,
+                                  child: GestureDetector(
+                                    onTap: () => _removeImage(i),
+                                    child: Container(
+                                      decoration: const BoxDecoration(
+                                        color: Colors.black54,
+                                        shape: BoxShape.circle,
+                                      ),
                                       child: const Icon(
-                                        Icons.broken_image_outlined,
-                                        size: 18,
-                                        color: Color(0xFF9CA3AF),
+                                        Icons.close,
+                                        color: Colors.white,
+                                        size: 14,
                                       ),
                                     ),
                                   ),
-                          );
-                        }).toList(),
-                      ),
-                      const SizedBox(height: 6),
-                      const Text(
-                        'Le foto gia\' inviate non si possono togliere dall\'app.',
-                        style: TextStyle(
-                          color: Color(0xFF9CA3AF),
-                          fontSize: 11,
-                          fontFamily: 'Inter',
+                                ),
+                              ],
+                            );
+                          }),
+                        ),
+                        const SizedBox(height: 8),
+                      ],
+                      SizedBox(
+                        width: double.infinity,
+                        child: OutlinedButton.icon(
+                          onPressed: _showPhotoOptions,
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: const Color(0xFF7BA566),
+                            side: const BorderSide(color: Color(0xFF7BA566)),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            padding: const EdgeInsets.symmetric(vertical: 12),
+                          ),
+                          icon: const Icon(
+                            Icons.add_photo_alternate_outlined,
+                            size: 16,
+                          ),
+                          label: Text(
+                            _images.isEmpty
+                                ? 'Aggiungi foto'
+                                : 'Aggiungi altre foto',
+                            style: const TextStyle(
+                              fontFamily: 'Inter',
+                              fontSize: 13,
+                            ),
+                          ),
                         ),
                       ),
-                      const SizedBox(height: 10),
-                    ],
 
-                    if (_images.isNotEmpty) ...[
-                      Wrap(
-                        spacing: 8,
-                        runSpacing: 8,
-                        children: List.generate(_images.length, (i) {
-                          return Stack(
+                      if (_error != null) ...[
+                        const SizedBox(height: 16),
+                        Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFFEF2F2),
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: const Color(0xFFFCA5A5)),
+                          ),
+                          child: Row(
                             children: [
-                              ClipRRect(
-                                borderRadius: BorderRadius.circular(8),
-                                child: Image.file(
-                                  File(_images[i].path),
-                                  width: 80,
-                                  height: 80,
-                                  fit: BoxFit.cover,
-                                  // l'anteprima e' 80px: decodificare la foto
-                                  // a piena risoluzione sprecherebbe memoria
-                                  cacheWidth: 240,
-                                ),
+                              const Icon(
+                                Icons.error_outline,
+                                color: Colors.redAccent,
+                                size: 16,
                               ),
-                              Positioned(
-                                top: 2,
-                                right: 2,
-                                child: GestureDetector(
-                                  onTap: () => _removeImage(i),
-                                  child: Container(
-                                    decoration: const BoxDecoration(
-                                      color: Colors.black54,
-                                      shape: BoxShape.circle,
-                                    ),
-                                    child: const Icon(Icons.close,
-                                        color: Colors.white, size: 14),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  _error!,
+                                  style: const TextStyle(
+                                    color: Colors.redAccent,
+                                    fontSize: 13,
+                                    fontFamily: 'Inter',
                                   ),
                                 ),
                               ),
                             ],
-                          );
-                        }),
-                      ),
-                      const SizedBox(height: 8),
+                          ),
+                        ),
+                      ],
+                      const SizedBox(height: 60),
                     ],
-                    SizedBox(
-                      width: double.infinity,
-                      child: OutlinedButton.icon(
-                        onPressed: _showPhotoOptions,
-                        style: OutlinedButton.styleFrom(
-                          foregroundColor: const Color(0xFF7BA566),
-                          side: const BorderSide(color: Color(0xFF7BA566)),
-                          shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(10)),
-                          padding: const EdgeInsets.symmetric(vertical: 12),
-                        ),
-                        icon: const Icon(Icons.add_photo_alternate_outlined,
-                            size: 16),
-                        label: Text(
-                          _images.isEmpty
-                              ? 'Aggiungi foto'
-                              : 'Aggiungi altre foto',
-                          style: const TextStyle(
-                              fontFamily: 'Inter', fontSize: 13),
-                        ),
-                      ),
-                    ),
-
-                    if (_error != null) ...[
-                      const SizedBox(height: 16),
-                      Container(
-                        padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFFEF2F2),
-                          borderRadius: BorderRadius.circular(8),
-                          border: Border.all(color: const Color(0xFFFCA5A5)),
-                        ),
-                        child: Row(
-                          children: [
-                            const Icon(Icons.error_outline,
-                                color: Colors.redAccent, size: 16),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: Text(
-                                _error!,
-                                style: const TextStyle(
-                                  color: Colors.redAccent,
-                                  fontSize: 13,
-                                  fontFamily: 'Inter',
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                    const SizedBox(height: 60),
-                  ],
+                  ),
                 ),
               ),
             ),
-          ),
 
-          // ── Barra pulsanti fissa ──────────────────────────────
-          BottomActionBar(
-            children: [
-              // Salva come bozza: il pulsante piccolo sta sempre sopra
-              // l'azione principale. Non compare su una segnalazione gia'
-              // inviata: dal Comune non torna indietro a bozza.
-              if (!_isEditingReport) ...[
-                SizedBox(
-                  width: double.infinity,
-                  child: SecondaryBarButton.green(
-                    label: 'Salva bozza',
-                    onPressed: _loading ? null : _saveDraft,
+            // ── Barra pulsanti fissa ──────────────────────────────
+            BottomActionBar(
+              children: [
+                // Salva come bozza: il pulsante piccolo sta sempre sopra
+                // l'azione principale. Non compare su una segnalazione gia'
+                // inviata: dal Comune non torna indietro a bozza.
+                if (!_isEditingReport) ...[
+                  SizedBox(
+                    width: double.infinity,
+                    child: SecondaryBarButton.green(
+                      label: 'Salva bozza',
+                      onPressed: _loading ? null : _saveDraft,
+                    ),
                   ),
+                  const SizedBox(height: 10),
+                ],
+                PrimaryBarButton(
+                  label: _isEditingReport ? 'SALVA MODIFICHE' : 'INVIA',
+                  loading: _loading,
+                  onPressed: _submit,
                 ),
-                const SizedBox(height: 10),
               ],
-              PrimaryBarButton(
-                label: _isEditingReport ? 'SALVA MODIFICHE' : 'INVIA',
-                loading: _loading,
-                onPressed: _submit,
-              ),
-            ],
-          ),
-        ],
+            ),
+          ],
+        ),
       ),
     );
   }
 
   static Widget _sectionLabel(String text) => Text(
-        text,
-        style: const TextStyle(
-          color: Color(0xFF444444),
-          fontSize: 12,
-          fontFamily: 'Inter',
-          fontWeight: FontWeight.w600,
-          letterSpacing: 0.5,
-        ),
-      );
+    text,
+    style: const TextStyle(
+      color: Color(0xFF444444),
+      fontSize: 12,
+      fontFamily: 'Inter',
+      fontWeight: FontWeight.w600,
+      letterSpacing: 0.5,
+    ),
+  );
 
   static Widget _fieldBox({required Widget child}) => Container(
-        decoration: BoxDecoration(
-          color: const Color(0xFFF9FAFB),
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: const Color(0xFFE5E7EB)),
-        ),
-        child: child,
-      );
+    decoration: BoxDecoration(
+      color: const Color(0xFFF9FAFB),
+      borderRadius: BorderRadius.circular(12),
+      border: Border.all(color: const Color(0xFFE5E7EB)),
+    ),
+    child: child,
+  );
 
   static const TextStyle _inputStyle = TextStyle(
     color: Color(0xFF111111),

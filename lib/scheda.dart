@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'form.dart';
 import 'services/api_service.dart';
 import 'services/draft_store.dart';
+import 'utils/responsive.dart';
 import 'widgets/action_bar.dart';
 
 class SchedaScreen extends StatefulWidget {
@@ -25,11 +26,22 @@ class _SchedaScreenState extends State<SchedaScreen> {
   /// Bozza locale: non e' mai stata inviata al Comune.
   bool get _isDraft => DraftStore.isLocal(report);
 
-  /// Segnalazione ancora modificabile: solo le proprie, ancora in attesa
-  /// di essere presa in carico. Sono gli stessi stati accettati dall'API,
-  /// che rifiuta comunque le altre.
-  bool get _canEditReport =>
-      !_isDraft && ApiService.canWrite && report['status'] == 'pending';
+  /// Segnalazione ancora modificabile: solo le proprie, e solo finche' e'
+  /// in attesa. Una volta presa in carico (in lavorazione o risolta) non si
+  /// tocca piu', nemmeno se l'ha inserita l'utente stesso.
+  ///
+  /// La decisione arriva dal server, nel campo `can_edit` della segnalazione,
+  /// che e' anche quello che rifiuta le modifiche non ammesse. Serve perche'
+  /// chi gestisce le segnalazioni vede in elenco anche quelle inserite da
+  /// altri: il permesso di scrittura da solo non basta piu' a dire se questa
+  /// scheda si puo' modificare.
+  bool get _canEditReport {
+    if (_isDraft || !ApiService.canWrite) return false;
+    final flag = report['can_edit'];
+    if (flag is bool) return flag;
+    // API precedente, che il campo non lo manda: vale la regola di prima.
+    return report['status'] == 'pending';
+  }
 
   @override
   void initState() {
@@ -303,18 +315,22 @@ class _SchedaScreenState extends State<SchedaScreen> {
           ),
           onPressed: () => Navigator.pop(context),
         ),
-        title: const Text(
+        title: Text(
           'Dettaglio segnalazione',
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
           style: TextStyle(
-            color: Color(0xFF111111),
-            fontSize: 18,
+            color: const Color(0xFF111111),
+            fontSize: context.isNarrowScreen ? 15 : context.adaptive(18),
             fontFamily: 'Inter',
             fontWeight: FontWeight.bold,
           ),
         ),
       ),
       body: SingleChildScrollView(
-        padding: const EdgeInsets.all(24),
+        // Su tablet e iPad la scheda resta in una colonna centrata di
+        // larghezza leggibile invece di stirarsi da bordo a bordo.
+        padding: context.centeredPadding(horizontal: 24, top: 24, bottom: 24),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -331,14 +347,18 @@ class _SchedaScreenState extends State<SchedaScreen> {
                 children: [
                   Icon(_statusIcon(status), color: color, size: 20),
                   const SizedBox(width: 10),
-                  Text(
-                    statusLabel.toUpperCase(),
-                    style: TextStyle(
-                      color: color,
-                      fontSize: 14,
-                      fontFamily: 'Inter',
-                      fontWeight: FontWeight.w700,
-                      letterSpacing: 0.5,
+                  // Expanded: con i caratteri di sistema ingranditi una
+                  // dicitura lunga va a capo invece di uscire dal banner.
+                  Expanded(
+                    child: Text(
+                      statusLabel.toUpperCase(),
+                      style: TextStyle(
+                        color: color,
+                        fontSize: 14,
+                        fontFamily: 'Inter',
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: 0.5,
+                      ),
                     ),
                   ),
                 ],
@@ -575,8 +595,8 @@ class _LocalImageGrid extends StatelessWidget {
     return GridView.builder(
       shrinkWrap: true,
       physics: const NeverScrollableScrollPhysics(),
-      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: 3,
+      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: context.thumbColumns,
         crossAxisSpacing: 6,
         mainAxisSpacing: 6,
       ),
@@ -633,8 +653,8 @@ class _ImageGrid extends StatelessWidget {
     return GridView.builder(
       shrinkWrap: true,
       physics: const NeverScrollableScrollPhysics(),
-      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: 3,
+      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: context.thumbColumns,
         crossAxisSpacing: 6,
         mainAxisSpacing: 6,
       ),

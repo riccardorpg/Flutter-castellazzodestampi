@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../utils/responsive.dart';
+
 /// Barra azioni fissa in fondo alla pagina: sfondo bianco, bordo e ombra
 /// per staccarla dal contenuto che scorre sotto.
 class BottomActionBar extends StatelessWidget {
@@ -20,10 +22,15 @@ class BottomActionBar extends StatelessWidget {
           ),
         ],
       ),
+      // SafeArea: sotto la barra c'e' l'ingombro di sistema (barra gesti
+      // Android, home indicator iPhone), che varia da telefono a telefono.
       child: SafeArea(
         top: false,
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+        child: ResponsiveCenter(
+          padding: EdgeInsets.symmetric(
+            horizontal: context.sidePadding,
+            vertical: 12,
+          ),
           child: Column(mainAxisSize: MainAxisSize.min, children: children),
         ),
       ),
@@ -48,14 +55,17 @@ class PrimaryBarButton extends StatelessWidget {
   Widget build(BuildContext context) {
     return SizedBox(
       width: double.infinity,
-      height: 54,
+      // L'altezza segue i caratteri di sistema: ingranditi, il testo
+      // non viene piu' tagliato dentro un bottone di altezza fissa.
+      height: context.tapHeight(54),
       child: ElevatedButton(
         onPressed: loading ? null : onPressed,
         style: ElevatedButton.styleFrom(
           backgroundColor: const Color(0xFF7BA566),
           foregroundColor: Colors.white,
-          disabledBackgroundColor:
-              const Color(0xFF7BA566).withValues(alpha: 0.5),
+          disabledBackgroundColor: const Color(
+            0xFF7BA566,
+          ).withValues(alpha: 0.5),
           disabledForegroundColor: Colors.white,
           elevation: 0,
           shape: RoundedRectangleBorder(
@@ -67,7 +77,9 @@ class PrimaryBarButton extends StatelessWidget {
                 width: 22,
                 height: 22,
                 child: CircularProgressIndicator(
-                    color: Colors.white, strokeWidth: 2),
+                  color: Colors.white,
+                  strokeWidth: 2,
+                ),
               )
             : Text(
                 label,
@@ -105,29 +117,29 @@ class SecondaryBarButton extends StatelessWidget {
     super.key,
     required this.label,
     required this.onPressed,
-  })  : foreground = const Color(0xFF4B5563),
-        borderColor = const Color(0xFF9CA3AF);
+  }) : foreground = const Color(0xFF4B5563),
+       borderColor = const Color(0xFF9CA3AF);
 
   /// Verde (Salva bozza).
   const SecondaryBarButton.green({
     super.key,
     required this.label,
     required this.onPressed,
-  })  : foreground = const Color(0xFF4F7A3B),
-        borderColor = const Color(0xFF7BA566);
+  }) : foreground = const Color(0xFF4F7A3B),
+       borderColor = const Color(0xFF7BA566);
 
   /// Rosso (Elimina).
   const SecondaryBarButton.danger({
     super.key,
     required this.label,
     required this.onPressed,
-  })  : foreground = const Color(0xFFB91C1C),
-        borderColor = const Color(0xFFEF4444);
+  }) : foreground = const Color(0xFFB91C1C),
+       borderColor = const Color(0xFFEF4444);
 
   @override
   Widget build(BuildContext context) {
     return SizedBox(
-      height: 50,
+      height: context.tapHeight(50),
       child: OutlinedButton(
         onPressed: onPressed,
         style: OutlinedButton.styleFrom(

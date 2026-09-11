@@ -4,12 +4,16 @@ import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'image_compressor.dart';
 
-/// Permesso dell'utente sul modulo segnalazioni, come arriva dal login.
+/// Permesso dell'utente sul modulo segnalazioni, come arriva dal server.
 ///
 /// * [none] – nessun accesso: il login viene rifiutato con un avviso.
-/// * [read] – sola lettura: si vedono le proprie segnalazioni, non si
-///   creano, modificano o eliminano.
-/// * [readWrite] – accesso completo.
+/// * [read] – permesso "r" sul sito.
+/// * [readWrite] – permesso "rw" sul sito.
+///
+/// Dentro l'app [read] e [readWrite] si comportano allo stesso modo: chi
+/// entra puo' sempre creare e modificare le proprie segnalazioni (vedi
+/// [ApiService.canWrite]). La distinzione si conserva perche' e' il valore
+/// vero del sito, dove invece separa chi consulta da chi scrive.
 enum AppPermission { none, read, readWrite }
 
 class ApiService {
@@ -33,18 +37,36 @@ class ApiService {
 
   static const String _tokenKey = 'auth_token';
   static const String _permissionKey = 'auth_permission';
+  static const String _userIdKey = 'auth_user_id';
   static String? token;
+
+  /// Id dell'utente collegato, come arriva dal server (`user.id`).
+  ///
+  /// Serve a tenere separato quello che l'app salva sul dispositivo: le
+  /// bozze locali stanno in un contenitore per utente, cosi' su un
+  /// telefono usato da piu' account nessuno vede le bozze di un altro
+  /// (vedi DraftStore). Resta salvato insieme al token, perche' al
+  /// riavvio il login non viene rifatto.
+  static String? userId;
 
   /// Permesso dell'utente sulle segnalazioni: lo manda il login e resta
   /// salvato sul dispositivo, perche' al riavvio dell'app il login non
   /// viene rifatto (si riusa il token).
   static AppPermission permission = AppPermission.none;
 
-  /// Puo' vedere le segnalazioni (sola lettura o lettura e scrittura).
+  /// Puo' usare l'app.
   static bool get canRead => permission != AppPermission.none;
 
-  /// Puo' creare, modificare ed eliminare segnalazioni e bozze.
-  static bool get canWrite => permission == AppPermission.readWrite;
+  /// Puo' creare, modificare ed eliminare le PROPRIE segnalazioni e bozze.
+  ///
+  /// Nell'app "r" e "rw" sono la stessa cosa: il permesso "Invio segnalazioni
+  /// (app)" decide chi entra, non cosa puo' fare una volta dentro. Chi ha un
+  /// accesso e' un cittadino che segnala, quindi scrive sempre. La differenza
+  /// fra consultazione e scrittura resta valida sul sito.
+  ///
+  /// Restano comunque le sole proprie: quali schede aprano Modifica ed
+  /// Elimina lo dice il campo `can_edit` che il server manda con ognuna.
+  static bool get canWrite => canRead;
 
   static Map<String, String> get _authHeaders => {
     'Content-Type': 'application/json',
@@ -53,12 +75,30 @@ class ApiService {
 
   // ── Persistenza token e permesso ───────────────────────────────
 
-  static Future<void> saveToken(String t, AppPermission p) async {
+  static Future<void> saveToken(
+    String t,
+    AppPermission p, {
+    String? id,
+  }) async {
     token = t;
     permission = p;
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_tokenKey, t);
     await prefs.setString(_permissionKey, p.name);
+    await _saveUserId(id);
+  }
+
+  /// Salva l'id dell'utente collegato. Con [id] nullo o vuoto (API vecchie,
+  /// che `user.id` non lo mandano) il valore salvato viene rimosso: meglio
+  /// non saperlo che tenersi quello di un altro accesso.
+  static Future<void> _saveUserId(String? id) async {
+    userId = (id == null || id.isEmpty) ? null : id;
+    final prefs = await SharedPreferences.getInstance();
+    if (userId == null) {
+      await prefs.remove(_userIdKey);
+    } else {
+      await prefs.setString(_userIdKey, userId!);
+    }
   }
 
   /// Restituisce true se esiste un token salvato con un permesso valido.
@@ -78,15 +118,18 @@ class ApiService {
     }
     token = saved;
     permission = savedPermission;
+    userId = prefs.getString(_userIdKey);
     return true;
   }
 
   static Future<void> clearToken() async {
     token = null;
     permission = AppPermission.none;
+    userId = null;
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_tokenKey);
     await prefs.remove(_permissionKey);
+    await prefs.remove(_userIdKey);
   }
 
   // ── Lettura del permesso dalla risposta di login ───────────────
@@ -142,6 +185,19 @@ class ApiService {
     final permissions = user['permissions'] ?? user['permessi'];
 
     if (permissions is Map) {
+      // Confronto esatto, non "la chiave contiene segnalazioni/reports":
+      // sul sito esiste anche il permesso "reports_manage" (gestione in area
+      // riservata), che contiene "reports" ma NON e' il permesso dell'app.
+      // Cercandolo per sottostringa si rischiava di leggere quello.
+      for (final wanted in _reportsKeys) {
+        for (final key in permissions.keys) {
+          if (key.toString().toLowerCase().trim() != wanted) continue;
+          return _permissionFromValue(permissions[key]);
+        }
+      }
+      // Nessuna chiave esatta: si ricade sul confronto larga maniera, per i
+      // backend che il modulo lo chiamano in un altro modo. Le chiavi della
+      // gestione restano fuori.
       for (final key in permissions.keys) {
         if (!_isReportsKey(key.toString())) continue;
         return _permissionFromValue(permissions[key]);
@@ -188,8 +244,19 @@ class ApiService {
 
   static bool _isReportsKey(String key) {
     final k = key.toLowerCase();
+    // "reports_manage"/"gestione_segnalazioni" sono la gestione in area
+    // riservata, non il permesso dell'app: qui non devono passare.
+    if (_manageWords.any(k.contains)) return false;
     return _reportsKeys.any(k.contains);
   }
+
+  /// Parole che identificano il permesso di gestione, non quello dell'app.
+  static const _manageWords = ['manage', 'gestione', 'gestisci'];
+
+  // Il backend manda anche `user.canManageReports` ("Gestione segnalazioni"
+  // sul sito). L'app non lo legge: da qui ognuno vede e gestisce le proprie,
+  // chiunque sia, e vedere tutte le segnalazioni resta un lavoro da area
+  // riservata.
 
   static AppPermission _permissionFromValue(dynamic value) {
     if (value == null || value == false) return AppPermission.none;
@@ -250,8 +317,10 @@ class ApiService {
   /// finisce il messaggio dell'eccezione, ed e' la riga piu' utile del
   /// log quando il server risponde 500.
   static String? _errorTitle(String html) {
-    final match =
-        RegExp(r'<title>(.*?)</title>', caseSensitive: false).firstMatch(html);
+    final match = RegExp(
+      r'<title>(.*?)</title>',
+      caseSensitive: false,
+    ).firstMatch(html);
     final title = match?.group(1)?.trim();
     return title == null || title.isEmpty ? null : '<$title> ';
   }
@@ -343,9 +412,62 @@ class ApiService {
       final response = await http
           .get(Uri.parse('$baseUrl/api/segnalazioni'), headers: _authHeaders)
           .timeout(const Duration(seconds: 15));
-      return _decode(response);
+      final result = _decode(response);
+      await syncPermissionFrom(result);
+      return result;
     } catch (e) {
       return _connectionError(e);
+    }
+  }
+
+  /// Tiene dell'elenco le sole segnalazioni inserite dall'utente collegato.
+  ///
+  /// L'API manda gia' solo le proprie, e con ognuna il campo `is_owner`:
+  /// questo filtro e' la rete di sicurezza. Se il server in elenco rimanda
+  /// anche quelle di altri — un backend non ancora aggiornato, o il
+  /// permesso di gestione che sul sito fa vedere tutto — dall'app non si
+  /// vedono comunque. Le segnalazioni senza `is_owner` (API precedenti,
+  /// che il campo non lo mandano) restano: non c'e' modo di distinguerle.
+  static List<Map<String, dynamic>> onlyMine(
+    List<Map<String, dynamic>> reports,
+  ) => reports.where((r) => r['is_owner'] != false).toList();
+
+  /// Riallinea il permesso salvato a quello che il server manda insieme
+  /// all'elenco, nel blocco `user`.
+  ///
+  /// Il permesso arriva col login e resta sul dispositivo finche' non si
+  /// esce: cambiandolo dal sito, l'app non se ne accorgeva fino al logout.
+  /// L'elenco viene ricaricato all'apertura, col pull-to-refresh e tornando
+  /// da ogni schermata, quindi e' il punto giusto dove riallinearsi senza
+  /// aggiungere chiamate.
+  ///
+  /// Le API precedenti il blocco `user` non lo mandano: in quel caso non si
+  /// tocca niente e resta valido il permesso del login.
+  static Future<void> syncPermissionFrom(Map<String, dynamic> result) async {
+    final user = result['user'];
+    if (user is! Map) return;
+    final data = Map<String, dynamic>.from(user);
+
+    // Anche l'id viaggia col blocco utente: qui si riallinea insieme al
+    // permesso, cosi' un'installazione aggiornata da una versione che non
+    // lo salvava lo ritrova al primo caricamento dell'elenco, senza
+    // rifare l'accesso.
+    final freshId = data['id']?.toString();
+    if (freshId != null && freshId.isNotEmpty && freshId != userId) {
+      await _saveUserId(freshId);
+    }
+
+    final fresh = permissionFromUser(data);
+    if (fresh == permission) return;
+
+    permission = fresh;
+    final prefs = await SharedPreferences.getInstance();
+    if (fresh == AppPermission.none) {
+      // Permesso revocato: il token non serve piu' a niente. Chi chiama se
+      // ne accorge da `canRead` e riporta al login.
+      await prefs.remove(_permissionKey);
+    } else {
+      await prefs.setString(_permissionKey, fresh.name);
     }
   }
 
@@ -482,6 +604,31 @@ class ApiService {
         const Duration(seconds: 60),
       );
       final response = await http.Response.fromStream(streamed);
+      return _decode(response);
+    } catch (e) {
+      return _connectionError(e);
+    }
+  }
+
+  /// Elimina una foto gia' caricata sul server.
+  ///
+  /// [fileName] e' il campo `file_name` dell'allegato, come arriva dall'API.
+  /// Il server la accetta solo sulle proprie segnalazioni ancora modificabili
+  /// (bozza o in attesa) e nella risposta rimanda la segnalazione aggiornata,
+  /// senza quella foto.
+  static Future<Map<String, dynamic>> deleteAttachment(
+    String id,
+    String fileName,
+  ) async {
+    if (!canWrite) return _noWritePermission;
+    try {
+      final response = await http
+          .post(
+            Uri.parse('$baseUrl/api/segnalazioni/$id/allegati/elimina'),
+            headers: _authHeaders,
+            body: jsonEncode({'file_name': fileName}),
+          )
+          .timeout(const Duration(seconds: 15));
       return _decode(response);
     } catch (e) {
       return _connectionError(e);

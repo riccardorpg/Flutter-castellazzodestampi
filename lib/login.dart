@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'services/api_service.dart';
+import 'utils/responsive.dart';
 import 'forgot_password.dart';
-import 'segnalazioni.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -45,9 +45,8 @@ class _LoginScreenState extends State<LoginScreen> {
 
     if (result['success'] == true) {
       final token = result['token'] as String? ?? '';
-      final permission = ApiService.permissionFromUser(
-        result['user'] as Map<String, dynamic>?,
-      );
+      final user = result['user'] as Map<String, dynamic>?;
+      final permission = ApiService.permissionFromUser(user);
 
       // Credenziali giuste ma nessun permesso sulle segnalazioni:
       // non si entra e il token appena creato viene buttato via.
@@ -64,18 +63,17 @@ class _LoginScreenState extends State<LoginScreen> {
         return;
       }
 
-      await ApiService.saveToken(token, permission);
+      // L'id dell'utente viaggia col token: le bozze salvate su questo
+      // dispositivo restano nel contenitore di chi le ha scritte.
+      await ApiService.saveToken(
+        token,
+        permission,
+        id: user?['id']?.toString(),
+      );
       if (!mounted) return;
-      if (permission == AppPermission.read) {
-        // Sola lettura: si salta il menu "Nuova segnalazione" e si entra
-        // direttamente nell'elenco.
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(builder: (_) => const SegnalazioniScreen()),
-        );
-      } else {
-        Navigator.pushReplacementNamed(context, '/menu');
-      }
+      // Chi entra puo' segnalare: la schermata iniziale e' sempre il menu
+      // dei tipi di segnalazione, "r" o "rw" che sia il permesso.
+      Navigator.pushReplacementNamed(context, '/menu');
     } else {
       setState(
         () => _error = result['message'] as String? ?? 'Errore di accesso.',
@@ -220,7 +218,7 @@ class _LoginScreenState extends State<LoginScreen> {
                         const SizedBox(height: 24),
                         SizedBox(
                           width: double.infinity,
-                          height: 52,
+                          height: context.tapHeight(52),
                           child: ElevatedButton(
                             onPressed: _loading ? null : _login,
                             style: ElevatedButton.styleFrom(

@@ -10,20 +10,59 @@ use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\Routing\Attribute\Route;
 use Symfony\Component\PasswordHasher\Hasher\UserPasswordHasherInterface;
 use Symfony\Component\DependencyInjection\ParameterBag\ParameterBagInterface;
+use Symfony\Bridge\Twig\Mime\TemplatedEmail;
+use Symfony\Component\Mailer\MailerInterface;
+use Symfony\Component\Mailer\Exception\TransportExceptionInterface;
+use App\Service\WebPathService;
 use App\Entity\User;
+use App\Service\ReportPriorityService;
 use App\Entity\Report;
 use App\Entity\ReportType;
+use App\Service\MediaService;
+use App\Service\ReportNotifier;
 
 #[Route('/api')]
 class ApiController extends AbstractController
 {
+    /** Stati che l'app puo' impostare: bozza oppure segnalazione inviata. */
+    private const USER_STATUSES = ['in_creazione', 'pending'];
+
+    /** Stati in cui l'utente puo' ancora modificare/eliminare la segnalazione. */
+    private const EDITABLE_STATUSES = ['in_creazione', 'pending'];
+
+    /** Thumbnail generata per ogni immagine caricata (gallery app + admin). */
+    private const THUMB_PREFIX = 'thumb_';
+    private const THUMB_SIZE = 300;
+    private const THUMB_QUALITY = 82;
+    private const THUMB_EXTENSIONS = ['jpg', 'jpeg', 'png', 'webp'];
+
+    /** Le immagini oltre 1 MB vengono ricompresse prima di essere archiviate. */
+    private const COMPRESS_THRESHOLD_BYTES = 1048576;
+    private const COMPRESS_MAX_SIZE = 1600;
+    private const COMPRESS_QUALITY = 80;
+
+    /**
+     * Bounding box del territorio del Comune di Corbetta (MI).
+     * Le segnalazioni sono accettate solo entro questi limiti.
+     */
+    private const CORBETTA_BOUNDS = [
+        'minLat' => 45.4200,
+        'maxLat' => 45.5150,
+        'minLon' => 8.8500,
+        'maxLon' => 8.9650,
+    ];
+
     protected $mr;
     protected $params;
+    protected $webPath;
+    protected $priority;
 
-    public function __construct(ManagerRegistry $managerRegistry, ParameterBagInterface $params)
+    public function __construct(ManagerRegistry $managerRegistry, ParameterBagInterface $params, ReportPriorityService $priority, WebPathService $webPath)
     {
         $this->mr = $managerRegistry;
         $this->params = $params;
+        $this->webPath = $webPath;
+        $this->priority = $priority;
     }
 
     private function getAuthenticatedUser(Request $request): ?User
@@ -34,7 +73,76 @@ class ApiController extends AbstractController
         }
 
         $em = $this->mr->getManager();
-        return $em->getRepository(User::class)->findOneBy(['apiToken' => $token]);
+        $user = $em->getRepository(User::class)->findOneBy(['apiToken' => $token]);
+
+        // Un account non piu' abilitato non deve poter usare un token gia' emesso
+        if ($user !== null && !$this->canLogin($user)) {
+            return null;
+        }
+
+        return $user;
+    }
+
+    /** Chi puo' usare l'app: staff attivo, non sospeso, con il permesso sulle segnalazioni. */
+    private function canLogin(User $user): bool
+    {
+        return $user->getRole() === 'ROLE_STAFF'
+            && $user->isIsActive()
+            && $user->isIsAdminActive()
+            && $user->getCanViewPermission('reports');
+    }
+
+    /**
+     * Chi puo' creare, modificare o eliminare le proprie segnalazioni.
+     *
+     * L'app e' uno strumento da cittadino: chi ci entra segnala. Il permesso
+     * 'reports' decide CHI entra (vedi canLogin), non cosa puo' fare una
+     * volta dentro, quindi qui basta averlo. La distinzione r / rw resta
+     * valida sul sito, dove separa chi consulta da chi scrive.
+     *
+     * Restano comunque le sole PROPRIE: a dirlo e' canEditReport, che
+     * confronta l'autore.
+     */
+    private function canWrite(User $user): bool
+    {
+        return $user->getCanViewPermission('reports');
+    }
+
+    /** Chi gestisce le segnalazioni dall'area riservata (stato, accorpamenti). */
+    private function canManage(User $user): bool
+    {
+        return $user->getCanViewPermission('reports_manage');
+    }
+
+    // Nell'app non esiste piu' un elenco completo: ognuno vede e gestisce
+    // le proprie segnalazioni, chiunque sia. Vedere tutto e' un lavoro da
+    // area riservata del sito, dove il permesso 'reports_manage' continua a
+    // valere. Per questo qui non c'e' piu' un canSeeAllReports.
+
+    /**
+     * Chi puo' modificare o eliminare questa segnalazione dall'app: solo il
+     * suo autore, solo finche' non e' stata presa in carico.
+     *
+     * Chi gestisce le segnalazioni vede anche quelle degli altri, ma da qui
+     * non le tocca: sull'app si modifica solo cio' che si e' inserito.
+     * Le altre si lavorano dall'area riservata.
+     */
+    private function canEditReport(User $user, Report $report): bool
+    {
+        return $this->canWrite($user)
+            && $report->getUser()?->getId() === $user->getId()
+            && in_array($report->getStatus(), self::EDITABLE_STATUSES, true);
+    }
+
+    /**
+     * URL assoluto di un file pubblico ('uploads/reports/12/foto.jpg').
+     * Passa da getBasePath() perche' in locale il sito sta in sottocartella:
+     * un percorso tipo /uploads/... li' non esiste. L'app riceve sempre URL
+     * completi e non deve piu' comporli da sola.
+     */
+    private function publicUrl(Request $request, string $relative): string
+    {
+        return $request->getSchemeAndHttpHost().$request->getBasePath().'/'.ltrim($relative, '/');
     }
 
     private function errorResponse(string $message, int $status = 400): JsonResponse
@@ -62,8 +170,16 @@ class ApiController extends AbstractController
             return $this->errorResponse('Credenziali non valide.', 401);
         }
 
+        if ($user->getRole() !== 'ROLE_STAFF') {
+            return $this->errorResponse("L'account non e' abilitato all'accesso.", 403);
+        }
+
         if (!$user->isIsActive() || !$user->isIsAdminActive()) {
             return $this->errorResponse('Account non attivo.', 403);
+        }
+
+        if (!$user->getCanViewPermission('reports')) {
+            return $this->errorResponse("L'account non ha il permesso di usare l'app delle segnalazioni.", 403);
         }
 
         if (!$passwordHasher->isPasswordValid($user, $password)) {
@@ -78,14 +194,48 @@ class ApiController extends AbstractController
         return new JsonResponse([
             'success' => true,
             'token' => $token,
-            'user' => [
-                'id' => $user->getId(),
-                'email' => $user->getEmail(),
-                'name' => $user->getName(),
-                'surname' => $user->getSurname(),
-                'role' => $user->getRole()
-            ]
+            'user' => $this->serializeUser($user),
         ]);
+    }
+
+    /**
+     * Blocco utente mandato all'app.
+     *
+     * Viaggia col login e con l'elenco delle segnalazioni: l'app lo rilegge
+     * a ogni caricamento della lista, cosi' un permesso tolto o dato sul sito
+     * ha effetto subito, senza rifare l'accesso.
+     */
+    private function serializeUser(User $user): array
+    {
+        return [
+            'id' => $user->getId(),
+            'email' => $user->getEmail(),
+            'name' => $user->getName(),
+            'surname' => $user->getSurname(),
+            'role' => $user->getRole(),
+            // L'app legge il permesso da qui ("" | "r" | "rw"): "segnalazioni"
+            // e' la chiave storica, "reports" e' lo slug del permesso.
+            //
+            // Per l'app conta solo se c'e' o non c'e': chi ha il permesso
+            // entra e segnala. La differenza fra "r" e "rw" resta valida sul
+            // sito, dove separa chi consulta da chi scrive.
+            //
+            // Qui dentro va SOLO il permesso dell'app ('reports'). La
+            // gestione ('reports_manage') sta fuori, in canManageReports:
+            // l'app cerca il modulo per nome e "reports_manage" contiene
+            // "reports", quindi dentro questa mappa rischierebbe di essere
+            // letto come se fosse il permesso dell'app.
+            'permissions' => [
+                'segnalazioni' => $user->getPermissionType('reports'),
+                'reports' => $user->getPermissionType('reports'),
+            ],
+            'canEditReports' => $user->getCanEditPermission('reports'),
+            // Gestione in area riservata. L'app non la usa: da qui ognuno
+            // vede e gestisce le proprie, chiunque sia. Resta nel payload
+            // per il sito e per gli altri client.
+            'canManageReports' => $this->canManage($user),
+            'ignorePermission' => $user->isIsIgnorePermission(),
+        ];
     }
 
     #[Route('/logout', name: 'api_logout', methods: ['POST'])]
@@ -135,6 +285,71 @@ class ApiController extends AbstractController
         return new JsonResponse(['success' => true, 'message' => 'Password modificata con successo.']);
     }
 
+    /**
+     * Recupero password dall'app, per chi la password non se la ricorda e
+     * quindi non puo' passare da '/modifica-password'.
+     *
+     * Manda la stessa email del sito ('/recupera-password'), con il link a
+     * '/crea-password-utente/{oneTimeCode}' valido tre ore: la nuova
+     * password si crea da browser e vale sia per l'app sia per l'area
+     * riservata.
+     *
+     * La risposta e' identica sia che l'indirizzo esista sia che non
+     * esista: distinguere i due casi darebbe a chiunque il modo di
+     * scoprire quali email hanno un account.
+     */
+    #[Route('/password-dimenticata', name: 'api_forgot_password', methods: ['POST'])]
+    public function forgotPassword(Request $request, MailerInterface $mailer): JsonResponse
+    {
+        $data = json_decode($request->getContent(), true);
+        $email = trim((string) ($data['email'] ?? ''));
+
+        if ($email === '') {
+            return $this->errorResponse("L'indirizzo email e' obbligatorio.");
+        }
+
+        $confirmation = [
+            'success' => true,
+            'message' => "Se l'indirizzo e' registrato riceverai una email con il link per creare una nuova password. Controlla la casella di posta."
+        ];
+
+        $em = $this->mr->getManager();
+        $user = $em->getRepository(User::class)->findOneBy(['email' => $email]);
+
+        // Niente email a chi non potrebbe comunque entrare nell'app.
+        // isIsActive() qui non si controlla, a differenza di canLogin():
+        // e' false anche per l'account staff che la password non l'ha mai
+        // creata, ed e' proprio chi questo link deve poter ricevere.
+        if (!$user
+            || $user->getRole() !== 'ROLE_STAFF'
+            || !$user->isIsAdminActive()
+            || !$user->getCanViewPermission('reports')) {
+            return new JsonResponse($confirmation);
+        }
+
+        $user->setOneTimeCode(md5(uniqid()));
+        $user->setExpirationOneTimeCode(date_modify(new \DateTime(), '+3 hours'));
+        $em->flush();
+
+        $message = (new TemplatedEmail())
+            ->from($this->getParameter('email_noreply'))
+            ->to($user->getEmail())
+            ->subject($this->getParameter('object_recover_password'))
+            ->htmlTemplate('email/password_recovery.html.twig')
+            ->context(['user' => $user]);
+
+        try {
+            $mailer->send($message);
+        } catch (TransportExceptionInterface $e) {
+            // Il codice e' stato salvato ma l'email non e' partita: senza
+            // messaggio l'utente resterebbe ad aspettare una posta che non
+            // arrivera' mai, quindi qui si dice che e' andata storta.
+            return $this->errorResponse("Non e' stato possibile inviare l'email di recupero. Riprova piu' tardi.", 500);
+        }
+
+        return new JsonResponse($confirmation);
+    }
+
     // ==================== REPORT TYPES ====================
 
     #[Route('/tipi-segnalazione', name: 'api_report_types', methods: ['GET'])]
@@ -146,19 +361,19 @@ class ApiController extends AbstractController
         }
 
         $em = $this->mr->getManager();
-        $rows = $em->getConnection()->fetchAllAssociative(
-            'SELECT id, name, slug, icon, icon_file FROM cas_report_type WHERE is_active = 1 ORDER BY priority ASC'
-        );
+        $types = $em->getRepository(ReportType::class)->findAllActive();
 
-        $base = $request->getSchemeAndHttpHost();
         $result = [];
-        foreach ($rows as $row) {
+        foreach ($types as $type) {
             $result[] = [
-                'id'        => (string) $row['id'],
-                'name'      => $row['name'],
-                'slug'      => $row['slug'],
-                'icon'      => $row['icon'],
-                'icon_file' => $row['icon_file'] ? $base . '/' . $row['icon_file'] : null,
+                'id' => $type->getId(),
+                'name' => $type->getName(),
+                'slug' => $type->getSlug(),
+                'icon' => $type->getIcon(),
+                'icon_file' => $type->getIconFile() ? $this->publicUrl($request, $type->getIconFile()) : null,
+                // Graduatoria del tipo: le segnalazioni la ereditano.
+                'priority' => $type->getPriority(),
+                'priority_label' => $this->priorityLabel($type->getPriority())
             ];
         }
 
@@ -176,14 +391,28 @@ class ApiController extends AbstractController
         }
 
         $em = $this->mr->getManager();
-        $reports = $em->getRepository(Report::class)->findByUser($user);
+        // Filtro esplicito sull'autore, con findBy: l'elenco dell'app e'
+        // sempre e solo il proprio, e non deve dipendere da come il
+        // repository interpreta un findByUser (che serve anche all'area
+        // riservata del sito, dove le segnalazioni si vedono tutte).
+        $reports = $em->getRepository(Report::class)->findBy(
+            ['user' => $user],
+            ['datetime' => 'DESC', 'id' => 'DESC']
+        );
 
         $result = [];
         foreach ($reports as $report) {
-            $result[] = $this->serializeReport($report, $request);
+            $result[] = $this->serializeReport($request, $report, $user);
         }
 
-        return new JsonResponse(['success' => true, 'data' => $result]);
+        // Il blocco utente viaggia con l'elenco, che l'app richiama a ogni
+        // apertura e a ogni pull-to-refresh: cosi' un permesso cambiato sul
+        // sito arriva da solo, senza costringere a uscire e rientrare.
+        return new JsonResponse([
+            'success' => true,
+            'data' => $result,
+            'user' => $this->serializeUser($user),
+        ]);
     }
 
     #[Route('/segnalazioni/{id}', name: 'api_report_detail', methods: ['GET'])]
@@ -197,19 +426,25 @@ class ApiController extends AbstractController
         $em = $this->mr->getManager();
         $report = $em->getRepository(Report::class)->find($id);
 
-        if (!$report || $report->getUser()->getId() !== $user->getId()) {
+        // Dall'app si apre solo la propria: l'elenco non ne contiene altre.
+        $isOwner = $report !== null && $report->getUser()?->getId() === $user->getId();
+        if (!$report || !$isOwner) {
             return $this->errorResponse('Segnalazione non trovata.', 404);
         }
 
-        return new JsonResponse(['success' => true, 'data' => $this->serializeReport($report, $request)]);
+        return new JsonResponse(['success' => true, 'data' => $this->serializeReport($request, $report, $user)]);
     }
 
     #[Route('/segnalazioni', name: 'api_report_create', methods: ['POST'])]
-    public function createReport(Request $request): JsonResponse
+    public function createReport(Request $request, ReportNotifier $notifier): JsonResponse
     {
         $user = $this->getAuthenticatedUser($request);
         if (!$user) {
             return $this->errorResponse('Non autenticato.', 401);
+        }
+
+        if (!$this->canWrite($user)) {
+            return $this->errorResponse("L'account ha le segnalazioni in sola lettura.", 403);
         }
 
         $em = $this->mr->getManager();
@@ -229,6 +464,15 @@ class ApiController extends AbstractController
             return $this->errorResponse('Tipo di segnalazione non valido.');
         }
 
+        if ($this->isOutsideCorbetta($latitude, $longitude)) {
+            return $this->errorResponse('La posizione indicata non rientra nel territorio del Comune di Corbetta.');
+        }
+
+        $status = $request->request->get('status', 'pending');
+        if (!in_array($status, self::USER_STATUSES, true)) {
+            $status = 'pending';
+        }
+
         $report = new Report();
         $report->setUser($user);
         $report->setReportType($reportType);
@@ -237,8 +481,10 @@ class ApiController extends AbstractController
         $report->setLatitude($latitude);
         $report->setLongitude($longitude);
         $report->setAddress($address);
-        $report->setStatus('pending');
-        $report->setPriority(0);
+        $report->setStatus($status);
+        // Non si chiede all'utente: la priorita' e' quella del tipo scelto,
+        // numerata dall'area riservata. Resta modificabile a mano dall'admin.
+        $report->setPriority($reportType->getPriority() ?? 0);
 
         $em->persist($report);
         $em->flush();
@@ -246,19 +492,31 @@ class ApiController extends AbstractController
         // Handle file uploads
         $this->handleAttachments($request, $report);
 
+        // Una bozza non e' ancora una segnalazione: si avvisa chi la deve
+        // lavorare solo quando viene inviata davvero.
+        if (!$report->isDraft()) {
+            $notifier->notifyNewReport($report);
+        }
+
         return new JsonResponse([
             'success' => true,
-            'message' => 'Segnalazione inviata con successo.',
-            'data' => $this->serializeReport($report, $request)
+            'message' => $report->isDraft()
+                ? 'Bozza salvata.'
+                : 'Segnalazione inviata con successo.',
+            'data' => $this->serializeReport($request, $report, $user)
         ], 201);
     }
 
     #[Route('/segnalazioni/{id}', name: 'api_report_update', methods: ['POST'])]
-    public function updateReport(Request $request, string $id): JsonResponse
+    public function updateReport(Request $request, string $id, ReportNotifier $notifier): JsonResponse
     {
         $user = $this->getAuthenticatedUser($request);
         if (!$user) {
             return $this->errorResponse('Non autenticato.', 401);
+        }
+
+        if (!$this->canWrite($user)) {
+            return $this->errorResponse("L'account ha le segnalazioni in sola lettura.", 403);
         }
 
         $em = $this->mr->getManager();
@@ -268,8 +526,8 @@ class ApiController extends AbstractController
             return $this->errorResponse('Segnalazione non trovata.', 404);
         }
 
-        if ($report->getStatus() !== 'pending') {
-            return $this->errorResponse('Solo le segnalazioni in attesa possono essere modificate.');
+        if (!in_array($report->getStatus(), self::EDITABLE_STATUSES, true)) {
+            return $this->errorResponse('Solo le bozze e le segnalazioni in attesa possono essere modificate.');
         }
 
         $typeId = $request->request->get('type_id');
@@ -277,11 +535,27 @@ class ApiController extends AbstractController
         $latitude = $request->request->get('latitude');
         $longitude = $request->request->get('longitude');
         $address = $request->request->get('address');
+        $status = $request->request->get('status');
+
+        if ($this->isOutsideCorbetta($latitude, $longitude)) {
+            return $this->errorResponse('La posizione indicata non rientra nel territorio del Comune di Corbetta.');
+        }
 
         if ($typeId) {
             $reportType = $em->getRepository(ReportType::class)->find($typeId);
             if ($reportType) {
+                $oldType = $report->getReportType();
+                // La priorita' segue il tipo solo se non e' stata toccata a
+                // mano dall'area riservata: un valore deciso dall'operatore
+                // non va perso perche' l'utente cambia tipo alla bozza.
+                $inherited = $oldType !== null
+                    && $report->getPriority() === $oldType->getPriority();
+
                 $report->setReportType($reportType);
+
+                if ($inherited) {
+                    $report->setPriority($reportType->getPriority() ?? 0);
+                }
             }
         }
 
@@ -298,15 +572,81 @@ class ApiController extends AbstractController
             $report->setAddress($address);
         }
 
+        // Passaggio bozza -> inviata (o salvataggio come bozza).
+        // La data resta quella di inserimento: e' il criterio di ordinamento
+        // delle liste, non deve cambiare quando la bozza viene inviata.
+        $wasDraft = $report->isDraft();
+        if ($status !== null && in_array($status, self::USER_STATUSES, true)) {
+            $report->setStatus($status);
+        }
+
         // Handle new file uploads
         $this->handleAttachments($request, $report);
 
         $em->flush();
 
+        // Bozza appena inviata: da adesso e' una segnalazione da lavorare e
+        // chi la gestisce va avvisato. Il salvataggio di una segnalazione gia'
+        // inviata non manda niente: sarebbe un'email ad ogni correzione.
+        if ($wasDraft && !$report->isDraft()) {
+            $notifier->notifyNewReport($report);
+        }
+
         return new JsonResponse([
             'success' => true,
-            'message' => 'Segnalazione aggiornata.',
-            'data' => $this->serializeReport($report, $request)
+            'message' => $report->isDraft() ? 'Bozza salvata.' : 'Segnalazione aggiornata.',
+            'data' => $this->serializeReport($request, $report, $user)
+        ]);
+    }
+
+    /**
+     * Elimina una foto (o un allegato) gia' caricato.
+     *
+     * Serve alla modifica: dall'app si aggiungevano foto e non si potevano
+     * piu' togliere, quindi uno scatto sbagliato restava attaccato alla
+     * segnalazione per sempre. Vale finche' la segnalazione e' modificabile,
+     * cioe' finche' non e' stata presa in carico.
+     */
+    #[Route('/segnalazioni/{id}/allegati/elimina', name: 'api_report_attachment_delete', methods: ['POST'])]
+    public function deleteReportAttachment(Request $request, string $id): JsonResponse
+    {
+        $user = $this->getAuthenticatedUser($request);
+        if (!$user) {
+            return $this->errorResponse('Non autenticato.', 401);
+        }
+
+        $em = $this->mr->getManager();
+        $report = $em->getRepository(Report::class)->find($id);
+
+        if (!$report || $report->getUser()?->getId() !== $user->getId()) {
+            return $this->errorResponse('Segnalazione non trovata.', 404);
+        }
+
+        if (!$this->canWrite($user)) {
+            return $this->errorResponse("L'account ha le segnalazioni in sola lettura.", 403);
+        }
+
+        if (!in_array($report->getStatus(), self::EDITABLE_STATUSES, true)) {
+            return $this->errorResponse('La segnalazione e\' stata presa in carico: le foto non si possono piu\' togliere.');
+        }
+
+        // Il nome arriva dal client: basename() impedisce di uscire dalla
+        // cartella della segnalazione con un "../".
+        $data = json_decode($request->getContent(), true);
+        $fileName = basename((string) ($data['file_name'] ?? $request->request->get('file_name', '')));
+
+        $uploadDir = $this->webPath->dir('/uploads/reports/'.$report->getId().'/');
+        if ($fileName === '' || $fileName === '.' || !is_file($uploadDir.$fileName)) {
+            return $this->errorResponse('Allegato non trovato.', 404);
+        }
+
+        @unlink($uploadDir.$fileName);
+        @unlink($uploadDir.self::THUMB_PREFIX.$fileName);
+
+        return new JsonResponse([
+            'success' => true,
+            'message' => 'Foto eliminata.',
+            'data' => $this->serializeReport($request, $report, $user)
         ]);
     }
 
@@ -318,6 +658,10 @@ class ApiController extends AbstractController
             return $this->errorResponse('Non autenticato.', 401);
         }
 
+        if (!$this->canWrite($user)) {
+            return $this->errorResponse("L'account ha le segnalazioni in sola lettura.", 403);
+        }
+
         $em = $this->mr->getManager();
         $report = $em->getRepository(Report::class)->find($id);
 
@@ -325,11 +669,11 @@ class ApiController extends AbstractController
             return $this->errorResponse('Segnalazione non trovata.', 404);
         }
 
-        if ($report->getStatus() !== 'pending') {
-            return $this->errorResponse('Solo le segnalazioni in attesa possono essere eliminate.');
+        if (!in_array($report->getStatus(), self::EDITABLE_STATUSES, true)) {
+            return $this->errorResponse('Solo le bozze e le segnalazioni in attesa possono essere eliminate.');
         }
 
-        $uploadDir = $this->params->get('kernel.project_dir').'/'.$this->params->get('web_path').'/uploads/reports/'.$report->getId().'/';
+        $uploadDir = $this->webPath->dir('/uploads/reports/'.$report->getId().'/');
         if (is_dir($uploadDir)) {
             foreach (scandir($uploadDir) as $filename) {
                 if ($filename !== '.' && $filename !== '..') {
@@ -360,13 +704,18 @@ class ApiController extends AbstractController
             return new JsonResponse(['success' => true, 'data' => []]);
         }
 
+        // La ricerca e' vincolata al bounding box di Corbetta: viewbox +
+        // bounded=1 fa scartare a Nominatim tutto cio' che sta fuori.
         $url = 'https://nominatim.openstreetmap.org/search?'
             .http_build_query([
                 'q' => $q,
                 'format' => 'json',
                 'addressdetails' => 1,
-                'limit' => 5,
+                'limit' => 8,
                 'countrycodes' => 'it',
+                'viewbox' => self::CORBETTA_BOUNDS['minLon'].','.self::CORBETTA_BOUNDS['maxLat']
+                    .','.self::CORBETTA_BOUNDS['maxLon'].','.self::CORBETTA_BOUNDS['minLat'],
+                'bounded' => 1,
             ]);
 
         $ctx = stream_context_create(['http' => ['header' => "User-Agent: castellazzodestampi-app/1.0\r\n", 'timeout' => 8]]);
@@ -378,11 +727,19 @@ class ApiController extends AbstractController
         $results = json_decode($raw, true) ?? [];
         $data = [];
         foreach ($results as $r) {
+            $addr = $r['address'] ?? [];
+            // doppio controllo: il viewbox e' un rettangolo, il comune no
+            if (!$this->isCorbettaAddress($addr)) {
+                continue;
+            }
             $data[] = [
                 'display_name' => $r['display_name'] ?? '',
                 'lat' => $r['lat'] ?? '',
                 'lon' => $r['lon'] ?? '',
             ];
+            if (count($data) >= 5) {
+                break;
+            }
         }
 
         return new JsonResponse(['success' => true, 'data' => $data]);
@@ -427,7 +784,14 @@ class ApiController extends AbstractController
 
         $address = implode(', ', $parts) ?: ($result['display_name'] ?? null);
 
-        return new JsonResponse(['success' => true, 'data' => ['address' => $address]]);
+        // L'app usa in_corbetta per bloccare l'invio da fuori territorio.
+        $inCorbetta = $this->isCorbettaAddress($addr)
+            && !$this->isOutsideCorbetta((string) $lat, (string) $lon);
+
+        return new JsonResponse(['success' => true, 'data' => [
+            'address' => $address,
+            'in_corbetta' => $inCorbetta,
+        ]]);
     }
 
     // ==================== HELPERS ====================
@@ -443,46 +807,154 @@ class ApiController extends AbstractController
             $files = [$files];
         }
 
-        $uploadDir = $this->params->get('kernel.project_dir').'/'.$this->params->get('web_path').'/uploads/reports/'.$report->getId().'/';
+        $uploadDir = $this->webPath->dir('/uploads/reports/'.$report->getId().'/');
         if (!is_dir($uploadDir)) {
             mkdir($uploadDir, 0755, true);
         }
+        @chmod($uploadDir, 0755);
 
         foreach ($files as $file) {
             if (!$file || !$file->isValid()) {
                 continue;
             }
 
-            $extension = $file->guessExtension() ?? $file->getClientOriginalExtension();
+            $extension = strtolower($file->guessExtension() ?? $file->getClientOriginalExtension());
             $fileName = uniqid().'.'.$extension;
 
             $file->move($uploadDir, $fileName);
+            @chmod($uploadDir . $fileName, 0644);
+
+            $this->compressIfLarge($uploadDir, $fileName, $extension);
+            $this->createThumbnail($uploadDir, $fileName, $extension);
         }
     }
 
-    private function serializeReport(Report $report, Request $request): array
+    /**
+     * Ricomprime in place le immagini che superano 1 MB (max lato 1600px).
+     * L'app comprime gia' prima dell'invio: questo copre gli altri client.
+     */
+    private function compressIfLarge(string $uploadDir, string $fileName, string $extension): void
     {
-        $em = $this->mr->getManager();
-        $base = $request->getSchemeAndHttpHost();
+        if (!in_array($extension, self::THUMB_EXTENSIONS, true)) {
+            return;
+        }
 
-        $typeIconFile = $em->getConnection()->fetchOne(
-            'SELECT icon_file FROM cas_report_type WHERE id = ?',
-            [$report->getReportType()->getId()]
-        );
+        $path = $uploadDir.$fileName;
+        if (!is_file($path) || filesize($path) <= self::COMPRESS_THRESHOLD_BYTES) {
+            return;
+        }
 
+        try {
+            MediaService::createPhoto(
+                $extension,
+                $uploadDir,
+                $fileName,
+                self::COMPRESS_MAX_SIZE,
+                self::COMPRESS_QUALITY,
+                false,
+                false
+            );
+        } catch (\Throwable $e) {
+            // compressione fallita: si tiene il file originale
+        }
+    }
+
+    /**
+     * Genera la miniatura da 300px usata nelle gallery (app e area admin).
+     * Se GD non riesce a leggere il file la gallery ricade sull'originale.
+     */
+    private function createThumbnail(string $uploadDir, string $fileName, string $extension): void
+    {
+        if (!in_array($extension, self::THUMB_EXTENSIONS, true)) {
+            return;
+        }
+
+        try {
+            MediaService::createPhoto(
+                $extension,
+                $uploadDir,
+                $fileName,
+                self::THUMB_SIZE,
+                self::THUMB_QUALITY,
+                true,
+                false
+            );
+        } catch (\Throwable $e) {
+            // nessuna thumbnail: si usa l'immagine originale
+        }
+    }
+
+    /**
+     * true se le coordinate sono valorizzate e cadono fuori dal territorio
+     * di Corbetta. Senza coordinate non e' possibile decidere: non blocca.
+     */
+    private function isOutsideCorbetta(?string $latitude, ?string $longitude): bool
+    {
+        if ($latitude === null || $longitude === null || $latitude === '' || $longitude === '') {
+            return false;
+        }
+
+        $lat = (float) $latitude;
+        $lon = (float) $longitude;
+
+        return $lat < self::CORBETTA_BOUNDS['minLat']
+            || $lat > self::CORBETTA_BOUNDS['maxLat']
+            || $lon < self::CORBETTA_BOUNDS['minLon']
+            || $lon > self::CORBETTA_BOUNDS['maxLon'];
+    }
+
+    /**
+     * true se i componenti indirizzo Nominatim indicano il Comune di Corbetta.
+     */
+    private function isCorbettaAddress(array $address): bool
+    {
+        foreach (['city', 'town', 'village', 'municipality'] as $key) {
+            if (isset($address[$key]) && stripos((string) $address[$key], 'corbetta') !== false) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    // ==================== PRIORITA' ====================
+
+    // La priorita' di una segnalazione non viene chiesta all'utente: la
+    // eredita dal tipo scelto, che porta la graduatoria numerata dall'area
+    // riservata. Convenzione: valore piu' ALTO = piu' urgente (4-5 Alta,
+    // 0-3 Bassa). Le soglie stanno in ReportPriorityService, unico punto in
+    // cui vanno cambiate: app e area riservata leggono da la'.
+
+    private function priorityLabel(?int $priority): string
+    {
+        return $this->priority->label($priority);
+    }
+
+    private function serializeReport(Request $request, Report $report, ?User $user = null): array
+    {
         $attachments = [];
-        $uploadDir = $this->params->get('kernel.project_dir').'/'.$this->params->get('web_path').'/uploads/reports/'.$report->getId().'/';
+        $uploadDir = $this->webPath->dir('/uploads/reports/'.$report->getId().'/');
         if (is_dir($uploadDir)) {
             $imageExtensions = ['jpg', 'jpeg', 'png', 'gif', 'webp'];
+            $baseUrl = $this->publicUrl($request, 'uploads/reports/'.$report->getId().'/');
             foreach (scandir($uploadDir) as $filename) {
                 if ($filename === '.' || $filename === '..') {
                     continue;
                 }
+                // le miniature non sono allegati a se' stanti
+                if (str_starts_with($filename, self::THUMB_PREFIX)) {
+                    continue;
+                }
                 $ext = strtolower(pathinfo($filename, PATHINFO_EXTENSION));
+                $isImage = in_array($ext, $imageExtensions);
+                $thumbName = self::THUMB_PREFIX.$filename;
+                $hasThumb = $isImage && is_file($uploadDir.$thumbName);
                 $attachments[] = [
                     'file_name' => $filename,
-                    'file_path' => '/uploads/reports/'.$report->getId().'/'.$filename,
-                    'file_type' => in_array($ext, $imageExtensions) ? 'image/'.$ext : 'file/'.$ext,
+                    'file_path' => $baseUrl.$filename,
+                    // ricade sull'originale per le immagini caricate prima delle thumbnail
+                    'thumb_path' => $baseUrl.($hasThumb ? $thumbName : $filename),
+                    'file_type' => $isImage ? 'image/'.$ext : 'file/'.$ext,
                     'uploaded_at' => date('Y-m-d H:i:s', filemtime($uploadDir.$filename))
                 ];
             }
@@ -491,20 +963,28 @@ class ApiController extends AbstractController
         return [
             'id' => $report->getId(),
             'type' => [
-                'id'        => $report->getReportType()->getId(),
-                'name'      => $report->getReportType()->getName(),
-                'slug'      => $report->getReportType()->getSlug(),
-                'icon_file' => $typeIconFile ? $base . '/' . $typeIconFile : null,
+                'id' => $report->getReportType()->getId(),
+                'name' => $report->getReportType()->getName(),
+                'slug' => $report->getReportType()->getSlug(),
+                'icon_file' => $report->getReportType()->getIconFile()
+                    ? $this->publicUrl($request, $report->getReportType()->getIconFile())
+                    : null
             ],
-            'datetime'     => $report->getDatetime()->format('Y-m-d H:i:s'),
-            'latitude'     => $report->getLatitude(),
-            'longitude'    => $report->getLongitude(),
-            'address'      => $report->getAddress(),
-            'priority'     => $report->getPriority(),
-            'details'      => $report->getDetails(),
-            'status'       => $report->getStatus(),
+            'datetime' => $report->getDatetime()->format('Y-m-d H:i:s'),
+            'latitude' => $report->getLatitude(),
+            'longitude' => $report->getLongitude(),
+            'address' => $report->getAddress(),
+            'priority' => $report->getPriority(),
+            'priority_label' => $this->priorityLabel($report->getPriority()),
+            'details' => $report->getDetails(),
+            'status' => $report->getStatus(),
             'status_label' => $report->getStatusLabel(),
-            'attachments'  => $attachments
+            // Chi vede tutte le segnalazioni ne ha in elenco anche di altri:
+            // questi due campi dicono all'app quali schede aprono i pulsanti
+            // Modifica ed Elimina, senza che debba dedurlo dal permesso globale.
+            'is_owner' => $user !== null && $report->getUser()?->getId() === $user->getId(),
+            'can_edit' => $user !== null && $this->canEditReport($user, $report),
+            'attachments' => $attachments
         ];
     }
 }

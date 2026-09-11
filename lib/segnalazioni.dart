@@ -3,7 +3,8 @@ import 'login.dart';
 import 'scheda.dart';
 import 'services/api_service.dart';
 import 'services/draft_store.dart';
-import 'widgets/read_only_banner.dart';
+import 'utils/responsive.dart';
+import 'widgets/bottom_nav_bar.dart';
 
 class SegnalazioniScreen extends StatefulWidget {
   const SegnalazioniScreen({super.key});
@@ -30,14 +31,16 @@ class _SegnalazioniScreenState extends State<SegnalazioniScreen> {
   Future<void> _loadReports() async {
     setState(() => _loading = true);
     // Le bozze locali non passano dal server: si leggono dal dispositivo
-    // e si mescolano alle segnalazioni gia' inviate. In sola lettura non
-    // si possono creare bozze, quindi non si mostrano.
-    final drafts = ApiService.canWrite
-        ? await DraftStore.load()
-        : <Map<String, dynamic>>[];
+    // e si mescolano alle segnalazioni gia' inviate.
+    final drafts = await DraftStore.load();
+    // Questa chiamata riallinea anche il permesso: il server lo manda
+    // insieme all'elenco, quindi un cambiamento fatto sul sito arriva qui
+    // senza bisogno di uscire e rientrare.
     final result = await ApiService.getMyReports();
     if (!mounted) return;
-    if (ApiService.isUnauthenticated(result)) {
+    // Token scaduto, oppure permesso revocato mentre l'app era aperta:
+    // in tutti e due i casi non si va oltre.
+    if (ApiService.isUnauthenticated(result) || !ApiService.canRead) {
       await ApiService.clearToken();
       if (!mounted) return;
       Navigator.of(context).pushAndRemoveUntil(
@@ -47,8 +50,12 @@ class _SegnalazioniScreenState extends State<SegnalazioniScreen> {
       return;
     }
     final ok = result['success'] == true;
+    // Solo le proprie: il server manda solo quelle, il filtro qui e' la
+    // rete di sicurezza (vedi ApiService.onlyMine).
     final data = ok
-        ? List<Map<String, dynamic>>.from(result['data'] as List)
+        ? ApiService.onlyMine(
+            List<Map<String, dynamic>>.from(result['data'] as List),
+          )
         : <Map<String, dynamic>>[];
     data.addAll(drafts);
     _sortByInsertion(data);
@@ -85,14 +92,9 @@ class _SegnalazioniScreenState extends State<SegnalazioniScreen> {
       0;
 
   /// Chip della barra filtri, nell'ordine in cui compaiono.
-  ///
-  /// "In creazione" riguarda solo le bozze locali: in sola lettura non se
-  /// ne possono creare e quelle eventualmente rimaste sul dispositivo non
-  /// vengono caricate, quindi il chip sparisce invece di aprire sempre una
-  /// lista vuota. Restano le card gia' inserite online.
-  Map<String, String> get _filters => {
+  static const Map<String, String> _filters = {
     'all': 'Tutte',
-    if (ApiService.canWrite) 'in_creazione': 'In creazione',
+    'in_creazione': 'In creazione',
     'pending': 'In attesa',
     'in_progress': 'In lavorazione',
     'resolved': 'Risolte',
@@ -122,42 +124,26 @@ class _SegnalazioniScreenState extends State<SegnalazioniScreen> {
             fit: BoxFit.contain,
           ),
         ),
-        // In sola lettura l'elenco non e' piu' solo il proprio: si vedono
-        // tutte le segnalazioni, quindi il titolo non dice "le mie".
+        // Dall'app si vedono sempre e solo le proprie: vedere quelle di
+        // tutti e' un lavoro da area riservata del sito.
         title: Text(
-          ApiService.canWrite ? 'Le mie segnalazioni' : 'Segnalazioni',
-          style: const TextStyle(
-            color: Color(0xFF111111),
-            fontSize: 18,
+          'Le mie segnalazioni',
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: TextStyle(
+            color: const Color(0xFF111111),
+            fontSize: context.isNarrowScreen ? 15 : context.adaptive(18),
             fontFamily: 'Inter',
             fontWeight: FontWeight.bold,
           ),
         ),
-        // In sola lettura questa e' la schermata iniziale: il pulsante
-        // per uscire, che di solito sta nel menu, serve qui.
-        actions: [
-          if (!ApiService.canWrite)
-            IconButton(
-              tooltip: 'Esci',
-              icon: const Icon(Icons.logout, color: Color(0xFF666666)),
-              onPressed: () async {
-                final navigator = Navigator.of(context);
-                await ApiService.logout();
-                navigator.pushAndRemoveUntil(
-                  MaterialPageRoute(builder: (_) => const LoginScreen()),
-                  (_) => false,
-                );
-              },
-            ),
-        ],
       ),
       body: Column(
         children: [
-          if (!ApiService.canWrite) const ReadOnlyBanner(),
           // ── Filtri ────────────────────────────────────────────
           SingleChildScrollView(
             scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+            padding: context.centeredPadding(top: 10, bottom: 10),
             child: Row(
               spacing: 8,
               children: [
@@ -174,40 +160,11 @@ class _SegnalazioniScreenState extends State<SegnalazioniScreen> {
           Expanded(child: _buildBody()),
         ],
       ),
-      // Senza permesso di scrittura non c'e' nessuna "Nuova
-      // segnalazione" da raggiungere: la barra sparisce.
-      bottomNavigationBar: !ApiService.canWrite
-          ? null
-          : GestureDetector(
-              onTap: () => Navigator.pop(context),
-              child: Container(
-                height: 68,
-                decoration: const BoxDecoration(
-                  color: Colors.white,
-                  border: Border(top: BorderSide(color: Color(0xFFE5E7EB))),
-                ),
-                child: const Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(
-                      Icons.add_circle_outline,
-                      color: Color(0xFF666666),
-                      size: 22,
-                    ),
-                    SizedBox(width: 10),
-                    Text(
-                      'Nuova',
-                      style: TextStyle(
-                        color: Color(0xFF666666),
-                        fontSize: 14,
-                        fontFamily: 'Inter',
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
+      bottomNavigationBar: BottomNavBar(
+        icon: Icons.add_circle_outline,
+        label: 'Nuova',
+        onTap: () => Navigator.pop(context),
+      ),
     );
   }
 
@@ -216,40 +173,61 @@ class _SegnalazioniScreenState extends State<SegnalazioniScreen> {
     required IconData icon,
     required String text,
     Future<void> Function()? onRetry,
-  }) => Center(
-    child: Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 32),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 64, color: Colors.grey.withValues(alpha: 0.4)),
-          const SizedBox(height: 12),
-          Text(
-            text,
-            textAlign: TextAlign.center,
-            style: const TextStyle(
-              color: Color(0xFF888888),
-              fontFamily: 'Inter',
-            ),
-          ),
-          if (onRetry != null) ...[
-            const SizedBox(height: 12),
-            TextButton(
-              onPressed: onRetry,
-              child: const Text(
-                'Riprova',
-                style: TextStyle(
-                  color: Color(0xFF7BA566),
-                  fontFamily: 'Inter',
-                  fontWeight: FontWeight.w600,
+  }) =>
+      // Resta centrato finche' c'e' spazio, ma puo' scorrere: su un
+      // telefono coricato, o basso, icona + testo + "Riprova" non ci
+      // stanno in altezza e senza scorrimento andrebbero in overflow.
+      LayoutBuilder(
+        builder: (context, constraints) => SingleChildScrollView(
+          child: ConstrainedBox(
+            constraints: BoxConstraints(minHeight: constraints.maxHeight),
+            child: Center(
+              child: Padding(
+                padding: context.centeredPadding(
+                  horizontal: 32,
+                  top: 24,
+                  bottom: 24,
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      icon,
+                      size: context.isShortScreen
+                          ? 44
+                          : context.adaptive(64, tablet: 72),
+                      color: Colors.grey.withValues(alpha: 0.4),
+                    ),
+                    const SizedBox(height: 12),
+                    Text(
+                      text,
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(
+                        color: Color(0xFF888888),
+                        fontFamily: 'Inter',
+                      ),
+                    ),
+                    if (onRetry != null) ...[
+                      const SizedBox(height: 12),
+                      TextButton(
+                        onPressed: onRetry,
+                        child: const Text(
+                          'Riprova',
+                          style: TextStyle(
+                            color: Color(0xFF7BA566),
+                            fontFamily: 'Inter',
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ],
                 ),
               ),
             ),
-          ],
-        ],
-      ),
-    ),
-  );
+          ),
+        ),
+      );
 
   Widget _buildBody() {
     if (_loading) {
@@ -279,10 +257,10 @@ class _SegnalazioniScreenState extends State<SegnalazioniScreen> {
       color: const Color(0xFF7BA566),
       onRefresh: _loadReports,
       child: ListView.builder(
-        padding: const EdgeInsets.all(16),
+        padding: context.centeredPadding(top: 16, bottom: 16),
         itemCount: list.length,
         itemBuilder: (_, i) =>
-            _ReportCard(report: list[i], onChanged: _loadReports),
+            ReportCard(report: list[i], onChanged: _loadReports),
       ),
     );
   }
@@ -290,14 +268,18 @@ class _SegnalazioniScreenState extends State<SegnalazioniScreen> {
 
 // ── Card ──────────────────────────────────────────────────────────
 
-class _ReportCard extends StatelessWidget {
+/// Card di una segnalazione in elenco.
+///
+/// Pubblica perche' un test verifica che il badge di stato resti
+/// appoggiato al bordo destro: e' gia' scivolato in mezzo una volta.
+class ReportCard extends StatelessWidget {
   final Map<String, dynamic> report;
 
   /// Richiamata al ritorno dalla scheda: una bozza puo' essere stata
   /// inviata o eliminata, quindi la lista va ricaricata.
   final Future<void> Function() onChanged;
 
-  const _ReportCard({required this.report, required this.onChanged});
+  const ReportCard({super.key, required this.report, required this.onChanged});
 
   static Color statusColor(String status) {
     switch (status) {
@@ -384,6 +366,8 @@ class _ReportCard extends StatelessWidget {
                             Expanded(
                               child: Text(
                                 typeName,
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
                                 style: const TextStyle(
                                   color: Color(0xFF111111),
                                   fontSize: 15,
@@ -392,27 +376,41 @@ class _ReportCard extends StatelessWidget {
                                 ),
                               ),
                             ),
-                            // Badge stato
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 8,
-                                vertical: 3,
+                            const SizedBox(width: 8),
+                            // Badge stato, sempre appoggiato al bordo
+                            // destro: non prende flex, cosi' l'Expanded
+                            // qui sopra si mangia tutto lo spazio libero e
+                            // lo spinge a destra. Il tetto di larghezza
+                            // serve solo a non far sfondare la card a
+                            // "IN LAVORAZIONE" sui telefoni stretti o coi
+                            // caratteri di sistema ingranditi.
+                            ConstrainedBox(
+                              constraints: BoxConstraints(
+                                maxWidth: context.screenWidth * 0.42,
                               ),
-                              decoration: BoxDecoration(
-                                color: color.withValues(alpha: 0.12),
-                                borderRadius: BorderRadius.circular(20),
-                                border: Border.all(
-                                  color: color.withValues(alpha: 0.4),
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 8,
+                                  vertical: 3,
                                 ),
-                              ),
-                              child: Text(
-                                label.toUpperCase(),
-                                style: TextStyle(
-                                  color: color,
-                                  fontSize: 10,
-                                  fontFamily: 'Inter',
-                                  fontWeight: FontWeight.w700,
-                                  letterSpacing: 0.5,
+                                decoration: BoxDecoration(
+                                  color: color.withValues(alpha: 0.12),
+                                  borderRadius: BorderRadius.circular(20),
+                                  border: Border.all(
+                                    color: color.withValues(alpha: 0.4),
+                                  ),
+                                ),
+                                child: Text(
+                                  label.toUpperCase(),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                    color: color,
+                                    fontSize: 10,
+                                    fontFamily: 'Inter',
+                                    fontWeight: FontWeight.w700,
+                                    letterSpacing: 0.5,
+                                  ),
                                 ),
                               ),
                             ),
