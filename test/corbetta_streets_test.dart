@@ -49,6 +49,31 @@ void main() {
     expect(CorbettaStreets.search('Corbetta'), isEmpty);
   });
 
+  group('stessa via scritta in modi diversi', () {
+    const uguali = [
+      ['Via Camillo Benso Conte di Cavour 10', 'Via Cavour'],
+      ['via cavour', 'Via Cavour'],
+      ['Via Roma 12', 'Via Roma'],
+      ['Via Roma 12/a', 'via roma'],
+      ['Via Giuseppe Mazzini', 'Via Mazzini'],
+    ];
+    const diverse = [
+      ['Via Roma', 'Piazza Roma'],
+      ['Via Cavour', 'Via Gorizia'],
+      ['Via 4 Novembre', 'Via 25 Aprile'],
+    ];
+    for (final c in uguali) {
+      test('${c[0]} = ${c[1]}', () {
+        expect(CorbettaStreets.sameStreet(c[0], c[1]), isTrue);
+      });
+    }
+    for (final c in diverse) {
+      test('${c[0]} ≠ ${c[1]}', () {
+        expect(CorbettaStreets.sameStreet(c[0], c[1]), isFalse);
+      });
+    }
+  });
+
   group('tutte le vie dell\'elenco', () {
     final vie =
         (jsonDecode(File('assets/corbetta_streets.json').readAsStringSync())
@@ -66,6 +91,17 @@ void main() {
           reason: v['name'] as String,
         );
       }
+    });
+
+    test('due vie diverse non vengono scambiate per la stessa', () {
+      final doppie = <String>[];
+      for (var i = 0; i < vie.length; i++) {
+        for (var j = i + 1; j < vie.length; j++) {
+          final a = vie[i]['name'] as String, b = vie[j]['name'] as String;
+          if (CorbettaStreets.sameStreet(a, b)) doppie.add('$a = $b');
+        }
+      }
+      expect(doppie, isEmpty);
     });
 
     test('si trovano scrivendo il loro nome', () {

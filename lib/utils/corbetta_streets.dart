@@ -33,6 +33,36 @@ abstract final class CorbettaStreets {
 
   /// Vie che corrispondono a [query], migliori prima, nello stesso formato
   /// dei suggerimenti del geocoder (`display_name`, `lat`, `lon`).
+  /// true se [a] e [b] sono la stessa via scritta in due modi, civico
+  /// escluso: "Via Camillo Benso Conte di Cavour 10" e "Via Cavour" si',
+  /// "Via Roma" e "Piazza Roma" no.
+  static bool sameStreet(String a, String b) {
+    final wa = _withoutCivico(_words(a)), wb = _withoutCivico(_words(b));
+    final ka = wa.where((w) => !_ignored.contains(w)).toSet();
+    final kb = wb.where((w) => !_ignored.contains(w)).toSet();
+    if (ka.isEmpty || kb.isEmpty) return false;
+
+    // Tipi diversi scritti entrambi = vie diverse.
+    final ta = wa.firstWhere(_streetTypes.contains, orElse: () => '');
+    final tb = wb.firstWhere(_streetTypes.contains, orElse: () => '');
+    if (ta.isNotEmpty && tb.isNotEmpty && ta != tb) return false;
+
+    // Un nome contiene l'altro: il nome completo e quello corto.
+    return ka.containsAll(kb) || kb.containsAll(ka);
+  }
+
+  /// Toglie il civico in fondo: ['via', 'roma', '12', 'a'] → ['via', 'roma'].
+  /// I numeri dentro il nome restano ("Via 4 Novembre").
+  static List<String> _withoutCivico(List<String> words) {
+    final w = [...words];
+    if (w.length > 1 && w.last.length == 1 && !RegExp(r'\d').hasMatch(w.last)) {
+      // "12/a" diventa ['12', 'a']: la lettera fa parte del civico.
+      if (RegExp(r'^\d+$').hasMatch(w[w.length - 2])) w.removeLast();
+    }
+    if (w.length > 1 && RegExp(r'^\d+$').hasMatch(w.last)) w.removeLast();
+    return w;
+  }
+
   static List<Map<String, dynamic>> search(String query, {int limit = 5}) {
     final words = _words(query).where((w) => !_corbettaWords.contains(w));
     final typed = words.where((w) => !_ignored.contains(w)).toList();

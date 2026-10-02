@@ -48,16 +48,24 @@ function inside(array $p, float $lat, float $lon): bool
 
 // Una via e' spesso spezzata in piu' tratti, e quelle di confine stanno
 // solo in parte a Corbetta: si raccolgono i punti del tracciato che cadono
-// dentro il confine.
+// dentro il confine. Su OSM la stessa via puo' comparire con maiuscole
+// diverse ("Via Fratelli Bandiera" / "Via fratelli Bandiera"): si
+// raggruppa senza badarci e si tiene la grafia con piu' maiuscole.
 $byName = [];
+$spelling = [];
+$capitals = fn (string $s) => preg_match_all('/\p{Lu}/u', $s);
 foreach (json_decode($raw, true)['elements'] ?? [] as $el) {
     $name = trim($el['tags']['name'] ?? '');
     if ($name === '') {
         continue;
     }
+    $key = mb_strtolower($name);
+    if (!isset($spelling[$key]) || $capitals($name) > $capitals($spelling[$key])) {
+        $spelling[$key] = $name;
+    }
     foreach ($el['geometry'] ?? [] as $c) {
         if (inside($polygon, $c['lat'], $c['lon'])) {
-            $byName[$name][] = [$c['lat'], $c['lon']];
+            $byName[$key][] = [$c['lat'], $c['lon']];
         }
     }
 }
@@ -65,7 +73,8 @@ foreach (json_decode($raw, true)['elements'] ?? [] as $el) {
 // Per ogni via si tiene il punto del tracciato piu' vicino alla media:
 // sta davvero sulla via, a meta' circa del tratto di Corbetta.
 $streets = [];
-foreach ($byName as $name => $points) {
+foreach ($byName as $key => $points) {
+    $name = $spelling[$key];
     $mLat = array_sum(array_column($points, 0)) / count($points);
     $mLon = array_sum(array_column($points, 1)) / count($points);
     usort($points, fn ($a, $b) => (($a[0] - $mLat) ** 2 + ($a[1] - $mLon) ** 2)

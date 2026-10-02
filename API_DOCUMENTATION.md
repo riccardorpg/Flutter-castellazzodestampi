@@ -545,6 +545,14 @@ della segnalazione. Va chiesta conferma all'utente.
 Entrambi gli endpoint sono vincolati al territorio del Comune di Corbetta: l'app li usa
 per compilare il campo indirizzo con coordinate valide.
 
+- **Territorio:** un punto e' di Corbetta se cade dentro il confine comunale. Il confine sta in
+  `config/corbetta_boundary.json` (OpenStreetMap, relazione 45011) e il controllo e' un
+  Ray-Casting.
+- **Geocoder:** prima si interroga Google Geocoding, che conosce i numeri civici, poi Nominatim
+  (OpenStreetMap), che ha solo le vie.
+- **Chiave Google:** Google si usa solo se nell'ambiente del server c'e' `GOOGLE_MAPS_API_KEY`
+  (in `.env.local`, mai nel repository). Senza chiave si usa solo Nominatim.
+
 ### 10.1 Autocomplete indirizzo
 
 ```
@@ -559,6 +567,7 @@ la query e' piu' corta di 3 caratteri o non ci sono corrispondenze).
 {
   "success": true,
   "data": [
+    { "display_name": "Via Roma 12, Corbetta", "lat": "45.4674", "lon": "8.9174", "house_number": "12" },
     { "display_name": "Via Roma, Corbetta, Milano, Lombardia, Italia", "lat": "45.4674", "lon": "8.9174" }
   ]
 }

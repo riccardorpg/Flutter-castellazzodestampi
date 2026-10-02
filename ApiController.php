@@ -711,8 +711,47 @@ class ApiController extends AbstractController
             return new JsonResponse(['success' => true, 'data' => []]);
         }
 
-        // La ricerca e' vincolata al bounding box di Corbetta: viewbox +
-        // bounded=1 fa scartare a Nominatim tutto cio' che sta fuori.
+        // Prima Google, che a Corbetta conosce i numeri civici; poi
+        // Nominatim (OpenStreetMap), che ha solo le vie, per completare.
+        $data = $this->googleSearch($q);
+        foreach ($this->nominatimSearch($q) as $item) {
+            if (count($data) >= 5) {
+                break;
+            }
+            if (!$this->hasStreet($data, $item['display_name'])) {
+                $data[] = $item;
+            }
+        }
+
+        return new JsonResponse(['success' => true, 'data' => $data]);
+    }
+
+    /** Suggerimenti di Google dentro Corbetta, [] senza chiave o in errore. */
+    private function googleSearch(string $q): array
+    {
+        $results = $this->googleGeocode([
+            'address' => $q,
+            'components' => 'country:IT',
+            'bounds' => self::CORBETTA_BOUNDS['minLat'].','.self::CORBETTA_BOUNDS['minLon']
+                .'|'.self::CORBETTA_BOUNDS['maxLat'].','.self::CORBETTA_BOUNDS['maxLon'],
+        ]);
+
+        $data = [];
+        foreach ($results as $r) {
+            $item = $this->googleItem($r);
+            if ($item !== null && !$this->hasStreet($data, $item['display_name'])) {
+                $data[] = $item;
+            }
+        }
+
+        return array_slice($data, 0, 5);
+    }
+
+    /** Suggerimenti di Nominatim dentro Corbetta. */
+    private function nominatimSearch(string $q): array
+    {
+        // viewbox + bounded=1 fa scartare a Nominatim tutto cio' che sta
+        // fuori dal rettangolo di Corbetta.
         $url = 'https://nominatim.openstreetmap.org/search?'
             .http_build_query([
                 'q' => $q,
@@ -728,12 +767,11 @@ class ApiController extends AbstractController
         $ctx = stream_context_create(['http' => ['header' => "User-Agent: castellazzodestampi-app/1.0\r\n", 'timeout' => 8]]);
         $raw = @file_get_contents($url, false, $ctx);
         if (!$raw) {
-            return new JsonResponse(['success' => true, 'data' => []]);
+            return [];
         }
 
-        $results = json_decode($raw, true) ?? [];
         $data = [];
-        foreach ($results as $r) {
+        foreach (json_decode($raw, true) ?? [] as $r) {
             // doppio controllo: il viewbox e' un rettangolo, il confine no
             if (!isset($r['lat'], $r['lon'])
                 || !$this->isInsideCorbetta((float) $r['lat'], (float) $r['lon'])) {
@@ -741,15 +779,28 @@ class ApiController extends AbstractController
             }
             $data[] = [
                 'display_name' => $r['display_name'] ?? '',
-                'lat' => $r['lat'] ?? '',
-                'lon' => $r['lon'] ?? '',
+                'lat' => $r['lat'],
+                'lon' => $r['lon'],
             ];
-            if (count($data) >= 5) {
-                break;
+        }
+
+        return $data;
+    }
+
+    /**
+     * true se in $items c'e' gia' un suggerimento con la stessa via (e lo
+     * stesso civico) di $displayName: confronta il primo pezzo, minuscolo.
+     */
+    private function hasStreet(array $items, string $displayName): bool
+    {
+        $key = static fn (string $name) => mb_strtolower(trim(explode(',', $name)[0]));
+        foreach ($items as $item) {
+            if ($key($item['display_name']) === $key($displayName)) {
+                return true;
             }
         }
 
-        return new JsonResponse(['success' => true, 'data' => $data]);
+        return false;
     }
 
     #[Route('/reverse-geocode', name: 'api_reverse_geocode', methods: ['GET'])]
@@ -767,29 +818,44 @@ class ApiController extends AbstractController
             return $this->errorResponse('Parametri lat e lon obbligatori.');
         }
 
-        $url = 'https://nominatim.openstreetmap.org/reverse?'
-            .http_build_query([
-                'lat' => $lat,
-                'lon' => $lon,
-                'format' => 'json',
-                'addressdetails' => 1,
-            ]);
-
-        $ctx = stream_context_create(['http' => ['header' => "User-Agent: castellazzodestampi-app/1.0\r\n", 'timeout' => 8]]);
-        $raw = @file_get_contents($url, false, $ctx);
-        if (!$raw) {
-            return new JsonResponse(['success' => true, 'data' => null]);
+        // Prima Google, che restituisce anche il civico; poi Nominatim.
+        $address = null;
+        foreach ($this->googleGeocode([
+            'latlng' => $lat.','.$lon,
+            'result_type' => 'street_address|premise|route',
+        ]) as $r) {
+            $item = $this->googleItem($r, false);
+            if ($item !== null) {
+                $address = $item['display_name'];
+                break;
+            }
         }
 
-        $result = json_decode($raw, true) ?? [];
-        $addr = $result['address'] ?? [];
-        $parts = array_filter([
-            $addr['road'] ?? null,
-            isset($addr['house_number']) ? $addr['house_number'] : null,
-            $addr['village'] ?? $addr['town'] ?? $addr['city'] ?? null,
-        ]);
+        if ($address === null) {
+            $url = 'https://nominatim.openstreetmap.org/reverse?'
+                .http_build_query([
+                    'lat' => $lat,
+                    'lon' => $lon,
+                    'format' => 'json',
+                    'addressdetails' => 1,
+                ]);
 
-        $address = implode(', ', $parts) ?: ($result['display_name'] ?? null);
+            $ctx = stream_context_create(['http' => ['header' => "User-Agent: castellazzodestampi-app/1.0\r\n", 'timeout' => 8]]);
+            $raw = @file_get_contents($url, false, $ctx);
+            if (!$raw) {
+                return new JsonResponse(['success' => true, 'data' => null]);
+            }
+
+            $result = json_decode($raw, true) ?? [];
+            $addr = $result['address'] ?? [];
+            $parts = array_filter([
+                $addr['road'] ?? null,
+                isset($addr['house_number']) ? $addr['house_number'] : null,
+                $addr['village'] ?? $addr['town'] ?? $addr['city'] ?? null,
+            ]);
+
+            $address = implode(', ', $parts) ?: ($result['display_name'] ?? null);
+        }
 
         // L'app usa in_corbetta per bloccare l'invio da fuori territorio.
         $inCorbetta = $this->isInsideCorbetta((float) $lat, (float) $lon);
@@ -798,6 +864,66 @@ class ApiController extends AbstractController
             'address' => $address,
             'in_corbetta' => $inCorbetta,
         ]]);
+    }
+
+    /**
+     * Chiamata a Google Geocoding. Senza GOOGLE_MAPS_API_KEY nell'ambiente
+     * (.env.local) o con Google in errore restituisce [] e si usa solo
+     * Nominatim, come prima.
+     */
+    private function googleGeocode(array $params): array
+    {
+        $key = $_ENV['GOOGLE_MAPS_API_KEY'] ?? $_SERVER['GOOGLE_MAPS_API_KEY'] ?? getenv('GOOGLE_MAPS_API_KEY');
+        if (!$key) {
+            return [];
+        }
+
+        $url = 'https://maps.googleapis.com/maps/api/geocode/json?'
+            .http_build_query($params + ['language' => 'it', 'region' => 'it', 'key' => $key]);
+        $ctx = stream_context_create(['http' => ['timeout' => 8]]);
+        $raw = @file_get_contents($url, false, $ctx);
+        $json = $raw ? json_decode($raw, true) : null;
+
+        return ($json['status'] ?? '') === 'OK' ? ($json['results'] ?? []) : [];
+    }
+
+    /**
+     * Risultato di Google nel formato dei suggerimenti ("Via Roma 12,
+     * Corbetta" + lat/lon). null se non e' una via o sta fuori dal confine.
+     * Con $requireInside = false (reverse geocoding) il confine lo controlla
+     * il chiamante sulle coordinate del GPS.
+     */
+    private function googleItem(array $r, bool $requireInside = true): ?array
+    {
+        $part = static function (string $type) use ($r): ?string {
+            foreach ($r['address_components'] ?? [] as $c) {
+                if (in_array($type, $c['types'] ?? [], true)) {
+                    return $c['long_name'];
+                }
+            }
+
+            return null;
+        };
+
+        $route = $part('route');
+        $lat = $r['geometry']['location']['lat'] ?? null;
+        $lon = $r['geometry']['location']['lng'] ?? null;
+        if ($route === null || $lat === null || $lon === null) {
+            return null;
+        }
+        if ($requireInside && !$this->isInsideCorbetta((float) $lat, (float) $lon)) {
+            return null;
+        }
+
+        $number = $part('street_number');
+        $comune = $part('locality') ?? $part('administrative_area_level_3') ?? 'Corbetta';
+
+        return [
+            'display_name' => trim($route.' '.($number ?? '')).', '.$comune,
+            'lat' => (string) $lat,
+            'lon' => (string) $lon,
+            'house_number' => $number,
+        ];
     }
 
     // ==================== HELPERS ====================

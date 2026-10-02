@@ -234,10 +234,17 @@ class _FormScreenState extends State<FormScreen> {
     // Il geocoder vuole il nome quasi esatto ("Via Ghiaccio" non trova
     // "Vicolo del Ghiaccio"): si aggiungono le vie dell'elenco di Corbetta
     // che gli somigliano, dopo quelle del geocoder che hanno il civico.
-    final locali = CorbettaStreets.search(
-      soloVia ?? _senzaComune(query),
-    ).where((s) => !filtered.any((f) => _sameStreet(f, s)));
-    filtered = [...filtered, ...locali].take(5).toList();
+    // Ogni via compare una volta sola: Google, OpenStreetMap e l'elenco la
+    // chiamano in modi diversi ("Via Camillo Benso Conte di Cavour 10",
+    // "Via Cavour"), resta la prima, che e' quella col civico.
+    final unici = <Map<String, dynamic>>[];
+    for (final item in [
+      ...filtered,
+      ...CorbettaStreets.search(soloVia ?? _senzaComune(query)),
+    ]) {
+      if (!unici.any((u) => _sameStreet(u, item))) unici.add(item);
+    }
+    filtered = unici.take(5).toList();
 
     setState(() {
       _suggestions = filtered;
@@ -256,7 +263,7 @@ class _FormScreenState extends State<FormScreen> {
   }
 
   static bool _sameStreet(Map<String, dynamic> a, Map<String, dynamic> b) =>
-      _streetOf(a) == _streetOf(b);
+      CorbettaStreets.sameStreet(_streetOf(a), _streetOf(b));
 
   /// Numero civico scritto nel campo: "via Roma 12" → "12", "via Roma
   /// 12/a" → "12/a", "via Roma" → null. Si ferma a 4 cifre per non
