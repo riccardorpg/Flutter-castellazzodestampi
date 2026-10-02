@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Confine di Corbetta</title>
+    <!-- Strumento di verifica: mostra assets/corbetta_boundary.json e dice
+         se il punto cliccato e' dentro o fuori. Non fa parte dell'app.
+         Aprire da un server locale (es. `php -S localhost:8000` nella root
+         del progetto, poi http://localhost:8000/tools/mappa_confine.html):
+         aperto col doppio click il browser blocca la lettura del JSON. -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <style>
+        body { font-family: Arial, sans-serif; padding: 16px; margin: 0; }
+        #map { height: 75vh; width: 100%; }
+        .status { font-weight: bold; padding: 10px; margin-top: 10px; border-radius: 5px; }
+        .inside { background-color: #d4edda; color: #155724; }
+        .outside { background-color: #f8d7da; color: #721c24; }
+    </style>
+</head>
+<body>
+    <h2>Confine del Comune di Corbetta</h2>
+    <p><em>Clicca sulla mappa per sapere se il punto e' dentro o fuori.</em></p>
+    <div id="map"></div>
+    <div id="statusBox" class="status" style="display:none;"></div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script>
+        const map = L.map('map').setView([45.4686, 8.9196], 13);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            maxZoom: 19,
+            attribution: '© OpenStreetMap'
+        }).addTo(map);
+
+        let confine = [];
+        let markerTest = null;
+
+        fetch('../assets/corbetta_boundary.json')
+            .then(r => r.json())
+            .then(punti => {
+                confine = punti;
+                const poligono = L.polygon(punti, {color: 'red', fillColor: '#f03', fillOpacity: 0.15}).addTo(map);
+                map.fitBounds(poligono.getBounds());
+            })
+            .catch(() => alert('Impossibile leggere assets/corbetta_boundary.json: apri la pagina da un server locale.'));
+
+        map.on('click', function (e) {
+            if (confine.length < 3) return;
+            const lat = e.latlng.lat, lng = e.latlng.lng;
+
+            if (markerTest) map.removeLayer(markerTest);
+            markerTest = L.marker([lat, lng]).addTo(map);
+
+            const dentro = checkPuntoInPoligono([lat, lng], confine);
+            const statusBox = document.getElementById('statusBox');
+            statusBox.style.display = 'block';
+            statusBox.className = dentro ? 'status inside' : 'status outside';
+            statusBox.innerText = (dentro ? 'DENTRO Corbetta' : 'FUORI Corbetta')
+                + ' (' + lat.toFixed(5) + ', ' + lng.toFixed(5) + ')';
+        });
+
+        // Ray-Casting, identico a lib/utils/corbetta_boundary.dart
+        function checkPuntoInPoligono(punto, poligono) {
+            const lat = punto[0], lng = punto[1];
+            let inside = false;
+            for (let i = 0, j = poligono.length - 1; i < poligono.length; j = i++) {
+                const latI = poligono[i][0], lngI = poligono[i][1];
+                const latJ = poligono[j][0], lngJ = poligono[j][1];
+                if (((latI > lat) !== (latJ > lat))
+                    && (lng < (lngJ - lngI) * (lat - latI) / (latJ - latI) + lngI)) {
+                    inside = !inside;
+                }
+            }
+            return inside;
+        }
+    </script>
+</body>
+</html>

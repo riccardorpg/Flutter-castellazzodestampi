@@ -42,15 +42,22 @@ class ApiController extends AbstractController
     private const COMPRESS_QUALITY = 80;
 
     /**
-     * Bounding box del territorio del Comune di Corbetta (MI).
-     * Le segnalazioni sono accettate solo entro questi limiti.
+     * Rettangolo che contiene il confine di Corbetta (con un piccolo
+     * margine): serve come viewbox per Nominatim. Il controllo vero e'
+     * il poligono in config/corbetta_boundary.json.
      */
     private const CORBETTA_BOUNDS = [
-        'minLat' => 45.4200,
-        'maxLat' => 45.5150,
-        'minLon' => 8.8500,
-        'maxLon' => 8.9650,
+        'minLat' => 45.4300,
+        'maxLat' => 45.4880,
+        'minLon' => 8.8975,
+        'maxLon' => 8.9690,
     ];
+
+    /** Confine di Corbetta (OSM relazione 45011), lista di [lat, lng]. */
+    private const CORBETTA_BOUNDARY_FILE = '/config/corbetta_boundary.json';
+
+    /** @var array<int, array{0: float, 1: float}>|null */
+    private ?array $corbettaPolygon = null;
 
     protected $mr;
     protected $params;
@@ -727,9 +734,9 @@ class ApiController extends AbstractController
         $results = json_decode($raw, true) ?? [];
         $data = [];
         foreach ($results as $r) {
-            $addr = $r['address'] ?? [];
-            // doppio controllo: il viewbox e' un rettangolo, il comune no
-            if (!$this->isCorbettaAddress($addr)) {
+            // doppio controllo: il viewbox e' un rettangolo, il confine no
+            if (!isset($r['lat'], $r['lon'])
+                || !$this->isInsideCorbetta((float) $r['lat'], (float) $r['lon'])) {
                 continue;
             }
             $data[] = [
@@ -785,8 +792,7 @@ class ApiController extends AbstractController
         $address = implode(', ', $parts) ?: ($result['display_name'] ?? null);
 
         // L'app usa in_corbetta per bloccare l'invio da fuori territorio.
-        $inCorbetta = $this->isCorbettaAddress($addr)
-            && !$this->isOutsideCorbetta((string) $lat, (string) $lon);
+        $inCorbetta = $this->isInsideCorbetta((float) $lat, (float) $lon);
 
         return new JsonResponse(['success' => true, 'data' => [
             'address' => $address,
@@ -894,27 +900,52 @@ class ApiController extends AbstractController
             return false;
         }
 
-        $lat = (float) $latitude;
-        $lon = (float) $longitude;
-
-        return $lat < self::CORBETTA_BOUNDS['minLat']
-            || $lat > self::CORBETTA_BOUNDS['maxLat']
-            || $lon < self::CORBETTA_BOUNDS['minLon']
-            || $lon > self::CORBETTA_BOUNDS['maxLon'];
+        return !$this->isInsideCorbetta((float) $latitude, (float) $longitude);
     }
 
     /**
-     * true se i componenti indirizzo Nominatim indicano il Comune di Corbetta.
+     * true se il punto sta dentro il confine reale di Corbetta (stesso
+     * controllo dell'app, lib/utils/corbetta_boundary.dart).
      */
-    private function isCorbettaAddress(array $address): bool
+    private function isInsideCorbetta(float $lat, float $lon): bool
     {
-        foreach (['city', 'town', 'village', 'municipality'] as $key) {
-            if (isset($address[$key]) && stripos((string) $address[$key], 'corbetta') !== false) {
-                return true;
+        if ($lat < self::CORBETTA_BOUNDS['minLat'] || $lat > self::CORBETTA_BOUNDS['maxLat']
+            || $lon < self::CORBETTA_BOUNDS['minLon'] || $lon > self::CORBETTA_BOUNDS['maxLon']) {
+            return false;
+        }
+
+        $polygon = $this->corbettaPolygon();
+
+        // Ray-Casting: linea dal punto verso est, si contano i lati del
+        // confine attraversati. Dispari = dentro, pari = fuori.
+        $inside = false;
+        $count = count($polygon);
+        for ($i = 0, $j = $count - 1; $i < $count; $j = $i++) {
+            [$latI, $lonI] = $polygon[$i];
+            [$latJ, $lonJ] = $polygon[$j];
+            if (($latI > $lat) !== ($latJ > $lat)
+                && $lon < ($lonJ - $lonI) * ($lat - $latI) / ($latJ - $latI) + $lonI) {
+                $inside = !$inside;
             }
         }
 
-        return false;
+        return $inside;
+    }
+
+    /** Poligono del confine, letto dal file una volta per richiesta. */
+    private function corbettaPolygon(): array
+    {
+        if ($this->corbettaPolygon === null) {
+            $file = $this->getParameter('kernel.project_dir').self::CORBETTA_BOUNDARY_FILE;
+            $raw = @file_get_contents($file);
+            $polygon = $raw ? json_decode($raw, true) : null;
+            if (!is_array($polygon) || count($polygon) < 3) {
+                throw new \RuntimeException('Confine di Corbetta mancante o non valido: '.$file);
+            }
+            $this->corbettaPolygon = $polygon;
+        }
+
+        return $this->corbettaPolygon;
     }
 
     // ==================== PRIORITA' ====================

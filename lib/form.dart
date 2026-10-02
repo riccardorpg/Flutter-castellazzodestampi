@@ -6,6 +6,8 @@ import 'package:image_picker/image_picker.dart';
 import 'segnalazioni.dart';
 import 'services/api_service.dart';
 import 'services/draft_store.dart';
+import 'utils/corbetta_boundary.dart';
+import 'utils/corbetta_streets.dart';
 import 'utils/responsive.dart';
 import 'widgets/action_bar.dart';
 
@@ -91,13 +93,6 @@ class _FormScreenState extends State<FormScreen> {
       _addressController.text.trim() != _initialAddress ||
       _images.isNotEmpty;
 
-  /// Bounding box del Comune di Corbetta: fuori da qui la segnalazione
-  /// non viene accettata (stesso vincolo applicato lato server).
-  static const double _corbettaMinLat = 45.4200;
-  static const double _corbettaMaxLat = 45.5150;
-  static const double _corbettaMinLon = 8.8500;
-  static const double _corbettaMaxLon = 8.9650;
-
   /// Indirizzo confermato dalla ricerca o dal GPS. Se il testo nel campo
   /// non e' piu' questo, l'indirizzo non e' verificato: niente spunta.
   String? _confirmedAddress;
@@ -109,11 +104,10 @@ class _FormScreenState extends State<FormScreen> {
       _confirmedAddress != null &&
       _addressController.text.trim() == _confirmedAddress!.trim();
 
+  /// Punto dentro il confine reale del Comune di Corbetta: fuori da qui
+  /// la segnalazione non viene accettata (stesso vincolo lato server).
   static bool _isInCorbetta(double lat, double lon) =>
-      lat >= _corbettaMinLat &&
-      lat <= _corbettaMaxLat &&
-      lon >= _corbettaMinLon &&
-      lon <= _corbettaMaxLon;
+      CorbettaBoundary.contains(lat, lon);
 
   @override
   void initState() {
@@ -162,12 +156,11 @@ class _FormScreenState extends State<FormScreen> {
     _initialDetails = _detailsController.text.trim();
     _initialAddress = savedAddress.trim();
 
-    // L'indirizzo salvato vale solo se risulta di Corbetta: altrimenti
-    // niente spunta e va riconfermato prima di salvare.
+    // L'indirizzo salvato vale solo se il suo punto sta nel confine di
+    // Corbetta: altrimenti niente spunta e va riconfermato prima di salvare.
     if (_latitude != null &&
         _longitude != null &&
-        _isInCorbetta(_latitude!, _longitude!) &&
-        _addressNamesCorbetta(savedAddress)) {
+        _isInCorbetta(_latitude!, _longitude!)) {
       _confirmedAddress = savedAddress;
     } else {
       _latitude = null;
@@ -238,11 +231,32 @@ class _FormScreenState extends State<FormScreen> {
       if (!mounted) return;
     }
 
+    // Il geocoder vuole il nome quasi esatto ("Via Ghiaccio" non trova
+    // "Vicolo del Ghiaccio"): si aggiungono le vie dell'elenco di Corbetta
+    // che gli somigliano, dopo quelle del geocoder che hanno il civico.
+    final locali = CorbettaStreets.search(
+      soloVia ?? _senzaComune(query),
+    ).where((s) => !filtered.any((f) => _sameStreet(f, s)));
+    filtered = [...filtered, ...locali].take(5).toList();
+
     setState(() {
       _suggestions = filtered;
       _noResults = filtered.isEmpty;
     });
   }
+
+  /// Nome della via del suggerimento, minuscolo: "12, Via Roma, …" e
+  /// "Via Roma, …" danno entrambi "via roma".
+  static String _streetOf(Map<String, dynamic> item) {
+    final parts = _addressParts(item);
+    if (parts.length >= 2 && _soloCivicoRe.hasMatch(parts.first)) {
+      return parts[1];
+    }
+    return parts.firstOrNull ?? '';
+  }
+
+  static bool _sameStreet(Map<String, dynamic> a, Map<String, dynamic> b) =>
+      _streetOf(a) == _streetOf(b);
 
   /// Numero civico scritto nel campo: "via Roma 12" → "12", "via Roma
   /// 12/a" → "12/a", "via Roma" → null. Si ferma a 4 cifre per non
@@ -395,11 +409,6 @@ class _FormScreenState extends State<FormScreen> {
           .where((p) => p.isNotEmpty)
           .toList();
 
-  /// Indirizzo che nomina Corbetta o una sua frazione: serve a fidarsi
-  /// di un indirizzo gia' salvato senza doverlo ricercare di nuovo.
-  static bool _addressNamesCorbetta(String address) =>
-      _addressParts({'display_name': address}).any(_isCorbettaName);
-
   /// Tiene solo le vie di Corbetta. Regola secca: passa unicamente il
   /// risultato che risulta di Corbetta; in ogni altro caso, comune
   /// diverso o indirizzo non riconoscibile, viene scartato.
@@ -412,11 +421,11 @@ class _FormScreenState extends State<FormScreen> {
   static bool _isCorbettaResult(Map<String, dynamic> item) {
     final lat = _latOf(item);
     final lon = _lonOf(item);
-    // Con coordinate note vale anche il bounding box, che pero' da solo
-    // non basta: e' un rettangolo che contiene Vittuone e altri comuni.
-    if (lat != null && lon != null && !_isInCorbetta(lat, lon)) return false;
+    // Con coordinate note decide il confine: "Via Corbetta, Vittuone"
+    // cade fuori dal poligono e viene scartata qui.
+    if (lat != null && lon != null) return _isInCorbetta(lat, lon);
 
-    // Il comune dichiarato decide da solo.
+    // Senza coordinate resta solo il nome: il comune dichiarato decide.
     final comune = _comuneOf(item);
     if (comune != null) return _isCorbettaName(comune);
 
@@ -603,9 +612,9 @@ class _FormScreenState extends State<FormScreen> {
       return;
     }
 
-    // L'indirizzo trovato deve risultare di Corbetta: il bounding box da
-    // solo non basta, e' un rettangolo che contiene anche i confinanti.
-    if (!_isCorbettaLocation(data)) {
+    // Il punto e' gia' nel confine (controllato prima di chiamare qui):
+    // resta da rispettare il no del server.
+    if (data['in_corbetta'] == false) {
       await _rejectPosition(
         'L\'indirizzo della tua posizione non e\' nel Comune di Corbetta '
         'e non puo\' essere accettato.\n'
@@ -632,28 +641,6 @@ class _FormScreenState extends State<FormScreen> {
       _suggestions = [];
       _noResults = false;
     });
-  }
-
-  /// Esito del reverse geocoding: si accetta solo con una conferma
-  /// esplicita di Corbetta, mai per mancanza di segnali contrari.
-  static bool _isCorbettaLocation(Map<String, dynamic> data) {
-    // Il server dice di no: chiuso qui.
-    if (data['in_corbetta'] == false) return false;
-
-    // L'indirizzo restituito arriva come stringa: viene letto con gli
-    // stessi criteri dei suggerimenti.
-    final item = <String, dynamic>{
-      ...data,
-      'display_name': data['address'] as String? ?? '',
-    };
-
-    final comune = _comuneOf(item);
-    if (comune != null) return _isCorbettaName(comune);
-    if (_addressParts(item).any(_isCorbettaName)) return true;
-
-    // Nessun comune leggibile nell'indirizzo: vale solo il si' esplicito
-    // del server, altrimenti si scarta.
-    return data['in_corbetta'] == true;
   }
 
   // ── Foto ───────────────────────────────────────────────────────

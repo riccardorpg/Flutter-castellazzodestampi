@@ -5,11 +5,15 @@ import 'login.dart';
 import 'form.dart';
 import 'segnalazioni.dart';
 import 'services/api_service.dart';
+import 'utils/corbetta_boundary.dart';
+import 'utils/corbetta_streets.dart';
 import 'utils/responsive.dart';
 import 'widgets/bottom_nav_bar.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await CorbettaBoundary.load();
+  await CorbettaStreets.load();
   runApp(const MyApp());
 }
 
@@ -20,7 +24,7 @@ class MyApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
-      title: 'Castellazzo dei Stampi',
+      title: "Castellazzo de' Stampi",
       // Le AppBar sono bianche: le icone di sistema in cima vanno forzate
       // scure, altrimenti su alcuni Android restano bianche su bianco e
       // ora'/batteria spariscono.

@@ -2,8 +2,8 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:segnalazioni_app/form.dart';
-import 'package:segnalazioni_app/services/api_service.dart';
+import 'package:castellazzodestampi/form.dart';
+import 'package:castellazzodestampi/services/api_service.dart';
 
 /// Una segnalazione gia' inviata, ancora modificabile, con una foto
 /// caricata sul server.

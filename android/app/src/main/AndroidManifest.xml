@@ -8,7 +8,7 @@
     <uses-permission android:name="android.permission.READ_MEDIA_IMAGES"/>
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32"/>
     <application
-        android:label="Castellazzo de Stampi"
+        android:label="Castellazzo de' Stampi"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher"
         android:usesCleartextTraffic="true">

@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:segnalazioni_app/services/api_service.dart';
+import 'package:castellazzodestampi/services/api_service.dart';
 
 void main() {
   AppPermission p(Map<String, dynamic>? user) =>

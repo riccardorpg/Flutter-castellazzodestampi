@@ -2,8 +2,8 @@ import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:segnalazioni_app/services/api_service.dart';
-import 'package:segnalazioni_app/services/draft_store.dart';
+import 'package:castellazzodestampi/services/api_service.dart';
+import 'package:castellazzodestampi/services/draft_store.dart';
 
 /// Blocco `user` come lo manda il server, per l'id indicato.
 Map<String, dynamic> _user(int id) => {

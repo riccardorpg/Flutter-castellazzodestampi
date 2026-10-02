@@ -1,0 +1,1302 @@
+[
+    {
+        "name": "Cascina Casalina",
+        "lat": 45.4511109,
+        "lon": 8.9633976
+    },
+    {
+        "name": "Cascina Malpiazza",
+        "lat": 45.4614983,
+        "lon": 8.9348177
+    },
+    {
+        "name": "Cascina Novella",
+        "lat": 45.4757251,
+        "lon": 8.9359356
+    },
+    {
+        "name": "Corso Europa",
+        "lat": 45.4711505,
+        "lon": 8.9059825
+    },
+    {
+        "name": "Corso Giuseppe Garibaldi",
+        "lat": 45.4662603,
+        "lon": 8.920284
+    },
+    {
+        "name": "Largo Benedetto Croce",
+        "lat": 45.4606995,
+        "lon": 8.9152887
+    },
+    {
+        "name": "Largo Cellere",
+        "lat": 45.4667665,
+        "lon": 8.9190404
+    },
+    {
+        "name": "Largo donatori di sangue",
+        "lat": 45.4695298,
+        "lon": 8.9183316
+    },
+    {
+        "name": "Piazza Corbas",
+        "lat": 45.4654916,
+        "lon": 8.9219096
+    },
+    {
+        "name": "Piazza Giuseppe Verdi",
+        "lat": 45.4686761,
+        "lon": 8.916366
+    },
+    {
+        "name": "Piazza Paolo Borsellino",
+        "lat": 45.4678214,
+        "lon": 8.9215643
+    },
+    {
+        "name": "Piazza Pierino Beretta",
+        "lat": 45.4691462,
+        "lon": 8.9208122
+    },
+    {
+        "name": "Piazza Primo Maggio",
+        "lat": 45.4698457,
+        "lon": 8.9218365
+    },
+    {
+        "name": "Piazza Roberto Tonella",
+        "lat": 45.4593414,
+        "lon": 8.9409851
+    },
+    {
+        "name": "Piazza San Vincenzo",
+        "lat": 45.4464737,
+        "lon": 8.9260399
+    },
+    {
+        "name": "Piazza Suor Michelina",
+        "lat": 45.4656456,
+        "lon": 8.9179199
+    },
+    {
+        "name": "Piazza del Popolo",
+        "lat": 45.4659692,
+        "lon": 8.9202168
+    },
+    {
+        "name": "Piazza delle Giostre",
+        "lat": 45.4686738,
+        "lon": 8.9252884
+    },
+    {
+        "name": "Piazzetta Caduti di Nassiriya",
+        "lat": 45.4624704,
+        "lon": 8.9252217
+    },
+    {
+        "name": "Piazzetta Pio IV",
+        "lat": 45.4678896,
+        "lon": 8.9200289
+    },
+    {
+        "name": "Rotatoria 8 Marzo",
+        "lat": 45.4705522,
+        "lon": 8.9094494
+    },
+    {
+        "name": "Rotatoria Gino Bartali",
+        "lat": 45.4716946,
+        "lon": 8.9094511
+    },
+    {
+        "name": "Rotatoria pilota Giancarlo Baghetti",
+        "lat": 45.4765898,
+        "lon": 8.9264181
+    },
+    {
+        "name": "Rotatoria pilota Ingegnere Piero Taruffi",
+        "lat": 45.4733496,
+        "lon": 8.9151812
+    },
+    {
+        "name": "Strada Preloreto",
+        "lat": 45.4540236,
+        "lon": 8.9072533
+    },
+    {
+        "name": "Strada padana est",
+        "lat": 45.46962,
+        "lon": 8.9008193
+    },
+    {
+        "name": "Via Abbiategrasso",
+        "lat": 45.4545047,
+        "lon": 8.9184504
+    },
+    {
+        "name": "Via Achille Grandi",
+        "lat": 45.4686204,
+        "lon": 8.9111511
+    },
+    {
+        "name": "Via Ada Negri",
+        "lat": 45.461665,
+        "lon": 8.9178412
+    },
+    {
+        "name": "Via Adamello",
+        "lat": 45.4618108,
+        "lon": 8.9240205
+    },
+    {
+        "name": "Via Alberto da Giussano",
+        "lat": 45.4819441,
+        "lon": 8.933949
+    },
+    {
+        "name": "Via Alcide De Gasperi",
+        "lat": 45.4709739,
+        "lon": 8.9312639
+    },
+    {
+        "name": "Via Alessandro Manzoni",
+        "lat": 45.4687905,
+        "lon": 8.9173163
+    },
+    {
+        "name": "Via Alessandro Volta",
+        "lat": 45.471739,
+        "lon": 8.9202861
+    },
+    {
+        "name": "Via Alfonso Lamarmora",
+        "lat": 45.4669066,
+        "lon": 8.910177
+    },
+    {
+        "name": "Via Amerigo Vespucci",
+        "lat": 45.4635783,
+        "lon": 8.9151576
+    },
+    {
+        "name": "Via Andrea Costa",
+        "lat": 45.4682317,
+        "lon": 8.9124992
+    },
+    {
+        "name": "Via Andrea Palladio",
+        "lat": 45.4764371,
+        "lon": 8.9454952
+    },
+    {
+        "name": "Via Antonio Fogazzaro",
+        "lat": 45.4588003,
+        "lon": 8.9421234
+    },
+    {
+        "name": "Via Antonio Gramsci",
+        "lat": 45.4698714,
+        "lon": 8.9166693
+    },
+    {
+        "name": "Via Antonio Vivaldi",
+        "lat": 45.4717488,
+        "lon": 8.9374918
+    },
+    {
+        "name": "Via Archimede",
+        "lat": 45.46295,
+        "lon": 8.9175591
+    },
+    {
+        "name": "Via Armando Diaz",
+        "lat": 45.4633108,
+        "lon": 8.9239618
+    },
+    {
+        "name": "Via Aurelio Franciosti",
+        "lat": 45.4730423,
+        "lon": 8.9395377
+    },
+    {
+        "name": "Via Baden Powell",
+        "lat": 45.4659034,
+        "lon": 8.9078448
+    },
+    {
+        "name": "Via Benedetto Croce",
+        "lat": 45.4611196,
+        "lon": 8.9231153
+    },
+    {
+        "name": "Via Benedetto XV",
+        "lat": 45.4734236,
+        "lon": 8.9019617
+    },
+    {
+        "name": "Via Berchet",
+        "lat": 45.476845,
+        "lon": 8.9302106
+    },
+    {
+        "name": "Via Brera",
+        "lat": 45.4658386,
+        "lon": 8.9226892
+    },
+    {
+        "name": "Via Calatafimi",
+        "lat": 45.4725824,
+        "lon": 8.9082191
+    },
+    {
+        "name": "Via Calipari",
+        "lat": 45.4624194,
+        "lon": 8.9247248
+    },
+    {
+        "name": "Via Carlo Alberto Dalla Chiesa",
+        "lat": 45.475961,
+        "lon": 8.9149878
+    },
+    {
+        "name": "Via Carlo Cattaneo",
+        "lat": 45.4671741,
+        "lon": 8.9215633
+    },
+    {
+        "name": "Via Carlo Goldoni",
+        "lat": 45.4740389,
+        "lon": 8.9336251
+    },
+    {
+        "name": "Via Carlo Pisacane",
+        "lat": 45.4599692,
+        "lon": 8.934079
+    },
+    {
+        "name": "Via Carlo Porta",
+        "lat": 45.4712991,
+        "lon": 8.9302478
+    },
+    {
+        "name": "Via Carlo Saracchi",
+        "lat": 45.4493517,
+        "lon": 8.9339524
+    },
+    {
+        "name": "Via Carlo Urbani",
+        "lat": 45.4808333,
+        "lon": 8.9313669
+    },
+    {
+        "name": "Via Cascina Bianca Carones",
+        "lat": 45.4764051,
+        "lon": 8.92562
+    },
+    {
+        "name": "Via Casnati",
+        "lat": 45.4461181,
+        "lon": 8.9293282
+    },
+    {
+        "name": "Via Cavour",
+        "lat": 45.4675299,
+        "lon": 8.9188225
+    },
+    {
+        "name": "Via Cesare Battisti",
+        "lat": 45.4711159,
+        "lon": 8.917612
+    },
+    {
+        "name": "Via Cesare Beccaria",
+        "lat": 45.4761174,
+        "lon": 8.9292522
+    },
+    {
+        "name": "Via Cesare Terranova",
+        "lat": 45.4647404,
+        "lon": 8.9122999
+    },
+    {
+        "name": "Via Ciro Menotti",
+        "lat": 45.4474067,
+        "lon": 8.9267833
+    },
+    {
+        "name": "Via Col di Lana",
+        "lat": 45.4660627,
+        "lon": 8.9250159
+    },
+    {
+        "name": "Via Confalonieri",
+        "lat": 45.477809,
+        "lon": 8.9319683
+    },
+    {
+        "name": "Via Corpo degli Alpini",
+        "lat": 45.4738604,
+        "lon": 8.9073356
+    },
+    {
+        "name": "Via Cristoforo Colombo",
+        "lat": 45.463638,
+        "lon": 8.9237605
+    },
+    {
+        "name": "Via Damiano Chiesa",
+        "lat": 45.4719557,
+        "lon": 8.9188307
+    },
+    {
+        "name": "Via Daniele Cucchiani",
+        "lat": 45.4723039,
+        "lon": 8.9331994
+    },
+    {
+        "name": "Via Dante Alighieri",
+        "lat": 45.4687875,
+        "lon": 8.9181084
+    },
+    {
+        "name": "Via Dolomiti",
+        "lat": 45.4618797,
+        "lon": 8.9080762
+    },
+    {
+        "name": "Via Don Albino Saresella",
+        "lat": 45.4471354,
+        "lon": 8.9243849
+    },
+    {
+        "name": "Via Don Angelo Bragonzi",
+        "lat": 45.4471354,
+        "lon": 8.9243849
+    },
+    {
+        "name": "Via Don Barera",
+        "lat": 45.4661889,
+        "lon": 8.9215341
+    },
+    {
+        "name": "Via Don Edoardo Sacchi",
+        "lat": 45.4741034,
+        "lon": 8.9072778
+    },
+    {
+        "name": "Via Don Giuseppe Ravazzani",
+        "lat": 45.4482717,
+        "lon": 8.9251584
+    },
+    {
+        "name": "Via Don Giuseppe Sala",
+        "lat": 45.4743679,
+        "lon": 8.9071454
+    },
+    {
+        "name": "Via Don Puglisi",
+        "lat": 45.4500426,
+        "lon": 8.9329938
+    },
+    {
+        "name": "Via Don Ramirez",
+        "lat": 45.4482765,
+        "lon": 8.9342576
+    },
+    {
+        "name": "Via Due Giugno",
+        "lat": 45.4631578,
+        "lon": 8.9224543
+    },
+    {
+        "name": "Via E. Alessandrini",
+        "lat": 45.4788089,
+        "lon": 8.9357122
+    },
+    {
+        "name": "Via Emilio Caldara",
+        "lat": 45.4717614,
+        "lon": 8.9219101
+    },
+    {
+        "name": "Via Enrico Mattei",
+        "lat": 45.4705683,
+        "lon": 8.9115813
+    },
+    {
+        "name": "Via Enrico Toti",
+        "lat": 45.4643211,
+        "lon": 8.9156782
+    },
+    {
+        "name": "Via Enzo Biagi",
+        "lat": 45.4476871,
+        "lon": 8.9322616
+    },
+    {
+        "name": "Via Ernesto Parini",
+        "lat": 45.4500191,
+        "lon": 8.9473627
+    },
+    {
+        "name": "Via Eugenio Curiel",
+        "lat": 45.4699593,
+        "lon": 8.9160133
+    },
+    {
+        "name": "Via Europa",
+        "lat": 45.4704058,
+        "lon": 8.9264265
+    },
+    {
+        "name": "Via Fabio Filzi",
+        "lat": 45.4711159,
+        "lon": 8.917612
+    },
+    {
+        "name": "Via Ferdinando Magellano",
+        "lat": 45.4618869,
+        "lon": 8.9160675
+    },
+    {
+        "name": "Via Filippetti",
+        "lat": 45.4666304,
+        "lon": 8.9139681
+    },
+    {
+        "name": "Via Filippo Corridoni",
+        "lat": 45.4723283,
+        "lon": 8.9171336
+    },
+    {
+        "name": "Via Filippo Turati",
+        "lat": 45.4706004,
+        "lon": 8.9245614
+    },
+    {
+        "name": "Via Fiume",
+        "lat": 45.4732584,
+        "lon": 8.9454378
+    },
+    {
+        "name": "Via Francesco Baracca",
+        "lat": 45.4692303,
+        "lon": 8.9181712
+    },
+    {
+        "name": "Via Francesco Caimi",
+        "lat": 45.4628733,
+        "lon": 8.9224713
+    },
+    {
+        "name": "Via Francesco Crispi",
+        "lat": 45.4700863,
+        "lon": 8.9144677
+    },
+    {
+        "name": "Via Francesco Mussi",
+        "lat": 45.4667918,
+        "lon": 8.919737
+    },
+    {
+        "name": "Via Francesco Petrarca",
+        "lat": 45.4717614,
+        "lon": 8.9219101
+    },
+    {
+        "name": "Via Fratelli Bandiera",
+        "lat": 45.4470841,
+        "lon": 8.9269789
+    },
+    {
+        "name": "Via Fratelli di Dio",
+        "lat": 45.4772403,
+        "lon": 8.9157819
+    },
+    {
+        "name": "Via Gabriele D'Annunzio",
+        "lat": 45.4682232,
+        "lon": 8.9274024
+    },
+    {
+        "name": "Via Gaetano Donizetti",
+        "lat": 45.4713265,
+        "lon": 8.9133667
+    },
+    {
+        "name": "Via Gaetano Salvemini",
+        "lat": 45.4610187,
+        "lon": 8.9202764
+    },
+    {
+        "name": "Via Galileo Galilei",
+        "lat": 45.4625129,
+        "lon": 8.9200884
+    },
+    {
+        "name": "Via Gandhi",
+        "lat": 45.4772202,
+        "lon": 8.9156375
+    },
+    {
+        "name": "Via Garcìa Lorca",
+        "lat": 45.4746666,
+        "lon": 8.9126712
+    },
+    {
+        "name": "Via Gasparotti",
+        "lat": 45.4773495,
+        "lon": 8.9151186
+    },
+    {
+        "name": "Via Generale Cadorna",
+        "lat": 45.4758819,
+        "lon": 8.9173682
+    },
+    {
+        "name": "Via Giacomo Brodolini",
+        "lat": 45.4699695,
+        "lon": 8.9089327
+    },
+    {
+        "name": "Via Giacomo Leopardi",
+        "lat": 45.4734908,
+        "lon": 8.9223994
+    },
+    {
+        "name": "Via Giacomo Matteotti",
+        "lat": 45.4666299,
+        "lon": 8.9214173
+    },
+    {
+        "name": "Via Giacomo Puccini",
+        "lat": 45.4701966,
+        "lon": 8.9141563
+    },
+    {
+        "name": "Via Giancarlo Rossi",
+        "lat": 45.4724792,
+        "lon": 8.9021934
+    },
+    {
+        "name": "Via Gioachino Rossini",
+        "lat": 45.4691708,
+        "lon": 8.9127212
+    },
+    {
+        "name": "Via Giorgio Ambrosoli",
+        "lat": 45.4728203,
+        "lon": 8.9174165
+    },
+    {
+        "name": "Via Giotto",
+        "lat": 45.4693527,
+        "lon": 8.9199352
+    },
+    {
+        "name": "Via Giovanni Amendola",
+        "lat": 45.4666752,
+        "lon": 8.9132604
+    },
+    {
+        "name": "Via Giovanni Falcone",
+        "lat": 45.4794615,
+        "lon": 8.9382877
+    },
+    {
+        "name": "Via Giovanni Paolo II",
+        "lat": 45.470514,
+        "lon": 8.9090169
+    },
+    {
+        "name": "Via Giovanni Pascoli",
+        "lat": 45.4723894,
+        "lon": 8.9314686
+    },
+    {
+        "name": "Via Giovanni Verga",
+        "lat": 45.4613858,
+        "lon": 8.9302629
+    },
+    {
+        "name": "Via Giovanni XXIII",
+        "lat": 45.4619153,
+        "lon": 8.9201549
+    },
+    {
+        "name": "Via Giuseppe Di Vittorio",
+        "lat": 45.4743084,
+        "lon": 8.9455461
+    },
+    {
+        "name": "Via Giuseppe Mazzini",
+        "lat": 45.4687119,
+        "lon": 8.9200892
+    },
+    {
+        "name": "Via Giuseppe Meroni",
+        "lat": 45.4667312,
+        "lon": 8.9124386
+    },
+    {
+        "name": "Via Giuseppe Parini",
+        "lat": 45.4685163,
+        "lon": 8.9310716
+    },
+    {
+        "name": "Via Giuseppe Verdi",
+        "lat": 45.4684571,
+        "lon": 8.9155974
+    },
+    {
+        "name": "Via Gorizia",
+        "lat": 45.4729634,
+        "lon": 8.9462823
+    },
+    {
+        "name": "Via Gran Sasso",
+        "lat": 45.4643336,
+        "lon": 8.9088008
+    },
+    {
+        "name": "Via Grazia Deledda",
+        "lat": 45.4598995,
+        "lon": 8.9391093
+    },
+    {
+        "name": "Via Guglielmo Marconi",
+        "lat": 45.4693945,
+        "lon": 8.9122335
+    },
+    {
+        "name": "Via Guglielmo Oberdan",
+        "lat": 45.4703482,
+        "lon": 8.9127366
+    },
+    {
+        "name": "Via Guido Rossa",
+        "lat": 45.4502766,
+        "lon": 8.9235748
+    },
+    {
+        "name": "Via Indro Montanelli",
+        "lat": 45.4473458,
+        "lon": 8.9304425
+    },
+    {
+        "name": "Via Ippolito Nievo",
+        "lat": 45.4718844,
+        "lon": 8.9034234
+    },
+    {
+        "name": "Via Karl Marx",
+        "lat": 45.4707703,
+        "lon": 8.922838
+    },
+    {
+        "name": "Via Leonardo da Vinci",
+        "lat": 45.4695883,
+        "lon": 8.9195888
+    },
+    {
+        "name": "Via Lev Tolstoj",
+        "lat": 45.4731341,
+        "lon": 8.9348217
+    },
+    {
+        "name": "Via Luciano Manara",
+        "lat": 45.4479151,
+        "lon": 8.9265241
+    },
+    {
+        "name": "Via Luciano Prada",
+        "lat": 45.4748137,
+        "lon": 8.911254
+    },
+    {
+        "name": "Via Ludovico Ariosto",
+        "lat": 45.4626066,
+        "lon": 8.9176827
+    },
+    {
+        "name": "Via Luigi Einaudi",
+        "lat": 45.4738243,
+        "lon": 8.9456754
+    },
+    {
+        "name": "Via Luigi Pirandello",
+        "lat": 45.4726724,
+        "lon": 8.9318906
+    },
+    {
+        "name": "Via Luigi Settembrini",
+        "lat": 45.4723602,
+        "lon": 8.9049597
+    },
+    {
+        "name": "Via Macchi",
+        "lat": 45.4459803,
+        "lon": 8.9216778
+    },
+    {
+        "name": "Via Marco Greppi",
+        "lat": 45.4625129,
+        "lon": 8.9200884
+    },
+    {
+        "name": "Via Marco Polo",
+        "lat": 45.4624555,
+        "lon": 8.9154005
+    },
+    {
+        "name": "Via Maria Grazia Cutuli",
+        "lat": 45.4475748,
+        "lon": 8.931663
+    },
+    {
+        "name": "Via Marradi",
+        "lat": 45.4740475,
+        "lon": 8.9212739
+    },
+    {
+        "name": "Via Marsala",
+        "lat": 45.4687436,
+        "lon": 8.9098848
+    },
+    {
+        "name": "Via Martin Luther King",
+        "lat": 45.4759711,
+        "lon": 8.917688
+    },
+    {
+        "name": "Via Martiri al Belfiore",
+        "lat": 45.4746104,
+        "lon": 8.9132738
+    },
+    {
+        "name": "Via Milano",
+        "lat": 45.4782187,
+        "lon": 8.9332738
+    },
+    {
+        "name": "Via Monsignor Don Giovanni Cipolla",
+        "lat": 45.4479176,
+        "lon": 8.9381081
+    },
+    {
+        "name": "Via Monsignor Italo Zat",
+        "lat": 45.4630507,
+        "lon": 8.9295379
+    },
+    {
+        "name": "Via Monsignor Pasquale Carnaghi",
+        "lat": 45.4643252,
+        "lon": 8.9235387
+    },
+    {
+        "name": "Via Monte Bianco",
+        "lat": 45.4616561,
+        "lon": 8.9103544
+    },
+    {
+        "name": "Via Monte Cervino",
+        "lat": 45.4571804,
+        "lon": 8.9093321
+    },
+    {
+        "name": "Via Monte Grappa",
+        "lat": 45.4673137,
+        "lon": 8.9159489
+    },
+    {
+        "name": "Via Monte Nero",
+        "lat": 45.4684571,
+        "lon": 8.9155974
+    },
+    {
+        "name": "Via Monte Resegone",
+        "lat": 45.4657749,
+        "lon": 8.9080216
+    },
+    {
+        "name": "Via Monte Rosa",
+        "lat": 45.4645037,
+        "lon": 8.9081874
+    },
+    {
+        "name": "Via Monte San Michele",
+        "lat": 45.4679859,
+        "lon": 8.9132977
+    },
+    {
+        "name": "Via Nazario Sauro",
+        "lat": 45.4696074,
+        "lon": 8.9262829
+    },
+    {
+        "name": "Via Niccolò Copernico",
+        "lat": 45.4754871,
+        "lon": 8.9175263
+    },
+    {
+        "name": "Via Niccolò Machiavelli",
+        "lat": 45.4613038,
+        "lon": 8.9156009
+    },
+    {
+        "name": "Via Nicolò Paganini",
+        "lat": 45.4726471,
+        "lon": 8.9405013
+    },
+    {
+        "name": "Via Nino Bixio",
+        "lat": 45.4604506,
+        "lon": 8.9212065
+    },
+    {
+        "name": "Via Oriana Fallaci",
+        "lat": 45.4474599,
+        "lon": 8.9310507
+    },
+    {
+        "name": "Via Pablo Picasso",
+        "lat": 45.4716559,
+        "lon": 8.9020647
+    },
+    {
+        "name": "Via Padre Ceriani",
+        "lat": 45.4702851,
+        "lon": 8.9097181
+    },
+    {
+        "name": "Via Padre G. Olivares",
+        "lat": 45.4770084,
+        "lon": 8.9202854
+    },
+    {
+        "name": "Via Padre Mario Lupano",
+        "lat": 45.4750162,
+        "lon": 8.9271584
+    },
+    {
+        "name": "Via Padre Meda",
+        "lat": 45.4511562,
+        "lon": 8.9328236
+    },
+    {
+        "name": "Via Paisiello",
+        "lat": 45.4745129,
+        "lon": 8.9427074
+    },
+    {
+        "name": "Via Palmiro Togliatti",
+        "lat": 45.4650591,
+        "lon": 8.9098674
+    },
+    {
+        "name": "Via Paolo IV",
+        "lat": 45.472926,
+        "lon": 8.9065026
+    },
+    {
+        "name": "Via Paolo VI",
+        "lat": 45.4739898,
+        "lon": 8.9020548
+    },
+    {
+        "name": "Via Papa Leone XIII",
+        "lat": 45.4717357,
+        "lon": 8.922947
+    },
+    {
+        "name": "Via Papa Luciani",
+        "lat": 45.4739997,
+        "lon": 8.9011425
+    },
+    {
+        "name": "Via Pasubio",
+        "lat": 45.4663068,
+        "lon": 8.9086224
+    },
+    {
+        "name": "Via Piave",
+        "lat": 45.4711839,
+        "lon": 8.9153531
+    },
+    {
+        "name": "Via Piero Gobetti",
+        "lat": 45.4759402,
+        "lon": 8.9298325
+    },
+    {
+        "name": "Via Piero Maroncelli",
+        "lat": 45.4752004,
+        "lon": 8.9168559
+    },
+    {
+        "name": "Via Piersanti Mattarella",
+        "lat": 45.4789077,
+        "lon": 8.9368673
+    },
+    {
+        "name": "Via Pietro Mascagni",
+        "lat": 45.4702702,
+        "lon": 8.91357
+    },
+    {
+        "name": "Via Pietro Micca",
+        "lat": 45.4472137,
+        "lon": 8.9254211
+    },
+    {
+        "name": "Via Pietro Verri",
+        "lat": 45.4756321,
+        "lon": 8.9285614
+    },
+    {
+        "name": "Via Pio X",
+        "lat": 45.4733662,
+        "lon": 8.904431
+    },
+    {
+        "name": "Via Quattro Novembre",
+        "lat": 45.4651817,
+        "lon": 8.9247284
+    },
+    {
+        "name": "Via Riccardo Lombardi",
+        "lat": 45.4777881,
+        "lon": 8.9165269
+    },
+    {
+        "name": "Via Risorgimento",
+        "lat": 45.4753392,
+        "lon": 8.9197026
+    },
+    {
+        "name": "Via Roma",
+        "lat": 45.4705924,
+        "lon": 8.9189725
+    },
+    {
+        "name": "Via Rosario",
+        "lat": 45.4526256,
+        "lon": 8.9239746
+    },
+    {
+        "name": "Via Sacco e Vanzetti",
+        "lat": 45.4751912,
+        "lon": 8.9162944
+    },
+    {
+        "name": "Via Salvatore Quasimodo",
+        "lat": 45.4599103,
+        "lon": 8.9398722
+    },
+    {
+        "name": "Via Salvo D'Acquisto",
+        "lat": 45.4488081,
+        "lon": 8.9328231
+    },
+    {
+        "name": "Via San Domenico",
+        "lat": 45.4766034,
+        "lon": 8.9273647
+    },
+    {
+        "name": "Via San Francesco",
+        "lat": 45.4627899,
+        "lon": 8.9033272
+    },
+    {
+        "name": "Via San Girolamo Emiliani",
+        "lat": 45.4696895,
+        "lon": 8.9255421
+    },
+    {
+        "name": "Via San Giuseppe",
+        "lat": 45.4755531,
+        "lon": 8.9216782
+    },
+    {
+        "name": "Via San Pietro",
+        "lat": 45.4731793,
+        "lon": 8.9061682
+    },
+    {
+        "name": "Via San Sebastiano",
+        "lat": 45.463943,
+        "lon": 8.9184054
+    },
+    {
+        "name": "Via San Vittore",
+        "lat": 45.4657961,
+        "lon": 8.9215746
+    },
+    {
+        "name": "Via Sandro Pertini",
+        "lat": 45.4640759,
+        "lon": 8.9245371
+    },
+    {
+        "name": "Via Sant'Ambrogio",
+        "lat": 45.4728839,
+        "lon": 8.9190802
+    },
+    {
+        "name": "Via Santa Caterina da Siena",
+        "lat": 45.4772636,
+        "lon": 8.9274195
+    },
+    {
+        "name": "Via Silvio Pellico",
+        "lat": 45.4747831,
+        "lon": 8.9115449
+    },
+    {
+        "name": "Via Simone da Corbetta",
+        "lat": 45.4728348,
+        "lon": 8.9129381
+    },
+    {
+        "name": "Via Strada Statale 11",
+        "lat": 45.4798212,
+        "lon": 8.9394594
+    },
+    {
+        "name": "Via Ticino",
+        "lat": 45.4601638,
+        "lon": 8.9250303
+    },
+    {
+        "name": "Via Tiziano Terzani",
+        "lat": 45.4474599,
+        "lon": 8.9310507
+    },
+    {
+        "name": "Via Torquato Tasso",
+        "lat": 45.4695524,
+        "lon": 8.9271234
+    },
+    {
+        "name": "Via Tranquillo Cremona",
+        "lat": 45.475468,
+        "lon": 8.9154608
+    },
+    {
+        "name": "Via Trento",
+        "lat": 45.4735723,
+        "lon": 8.9254927
+    },
+    {
+        "name": "Via Ugo Foscolo",
+        "lat": 45.4761174,
+        "lon": 8.9292522
+    },
+    {
+        "name": "Via Ugo La Malfa",
+        "lat": 45.44698,
+        "lon": 8.9335083
+    },
+    {
+        "name": "Via Valvassori",
+        "lat": 45.4448401,
+        "lon": 8.9269766
+    },
+    {
+        "name": "Via Vasco de Gama",
+        "lat": 45.4637299,
+        "lon": 8.9172805
+    },
+    {
+        "name": "Via Ventiquattro Maggio",
+        "lat": 45.4705083,
+        "lon": 8.9204097
+    },
+    {
+        "name": "Via Villoresi",
+        "lat": 45.467951,
+        "lon": 8.9132803
+    },
+    {
+        "name": "Via Vincenzo Bellini",
+        "lat": 45.4745129,
+        "lon": 8.9427074
+    },
+    {
+        "name": "Via Vincenzo Monti",
+        "lat": 45.4687697,
+        "lon": 8.9240448
+    },
+    {
+        "name": "Via Vittorio Carlo Gnoli",
+        "lat": 45.4861588,
+        "lon": 8.9378852
+    },
+    {
+        "name": "Via Vittorio Foa",
+        "lat": 45.4474716,
+        "lon": 8.9295481
+    },
+    {
+        "name": "Via Vittorio Veneto",
+        "lat": 45.4572735,
+        "lon": 8.9290739
+    },
+    {
+        "name": "Via Walter Tobagi",
+        "lat": 45.4724044,
+        "lon": 8.9255844
+    },
+    {
+        "name": "Via Zanella",
+        "lat": 45.4846569,
+        "lon": 8.9371871
+    },
+    {
+        "name": "Via Zara",
+        "lat": 45.4748463,
+        "lon": 8.944515
+    },
+    {
+        "name": "Via caduti sul lavoro",
+        "lat": 45.4737967,
+        "lon": 8.9085149
+    },
+    {
+        "name": "Via cascina Beretta",
+        "lat": 45.4794434,
+        "lon": 8.9225165
+    },
+    {
+        "name": "Via dei Mille",
+        "lat": 45.46962,
+        "lon": 8.9008193
+    },
+    {
+        "name": "Via del Crocefisso",
+        "lat": 45.465829,
+        "lon": 8.9192993
+    },
+    {
+        "name": "Via dell'Aventino",
+        "lat": 45.4660627,
+        "lon": 8.9250159
+    },
+    {
+        "name": "Via della Cantalupetta",
+        "lat": 45.4585784,
+        "lon": 8.9406015
+    },
+    {
+        "name": "Via della Madonna",
+        "lat": 45.4679914,
+        "lon": 8.9211704
+    },
+    {
+        "name": "Via della Marzorata",
+        "lat": 45.4637139,
+        "lon": 8.9599658
+    },
+    {
+        "name": "Via della Repubblica",
+        "lat": 45.4645262,
+        "lon": 8.9110668
+    },
+    {
+        "name": "Via della Resistenza",
+        "lat": 45.4778953,
+        "lon": 8.9155903
+    },
+    {
+        "name": "Via della libertà",
+        "lat": 45.4733141,
+        "lon": 8.9138863
+    },
+    {
+        "name": "Via dello sport",
+        "lat": 45.4739656,
+        "lon": 8.9152859
+    },
+    {
+        "name": "Via don Felice Cozzi",
+        "lat": 45.4661794,
+        "lon": 8.9236278
+    },
+    {
+        "name": "Via don Luigi Sturzo",
+        "lat": 45.4609818,
+        "lon": 8.9195195
+    },
+    {
+        "name": "Via fratelli Bandiera",
+        "lat": 45.4468991,
+        "lon": 8.9265947
+    },
+    {
+        "name": "Via fratelli Cervi",
+        "lat": 45.4734724,
+        "lon": 8.9231037
+    },
+    {
+        "name": "Via fratelli Ricchini",
+        "lat": 45.476056,
+        "lon": 8.9143179
+    },
+    {
+        "name": "Via fratelli Rosselli",
+        "lat": 45.469808,
+        "lon": 8.9103672
+    },
+    {
+        "name": "Via fratelli Vigorelli",
+        "lat": 45.4752211,
+        "lon": 8.9159627
+    },
+    {
+        "name": "Via privata Ilaria Alpi",
+        "lat": 45.4439538,
+        "lon": 8.9284724
+    },
+    {
+        "name": "Via vecchia postale",
+        "lat": 45.4742922,
+        "lon": 8.9279359
+    },
+    {
+        "name": "Viale Aldo Borletti",
+        "lat": 45.4733357,
+        "lon": 8.9096906
+    },
+    {
+        "name": "Vicolo Borri",
+        "lat": 45.464406,
+        "lon": 8.9173141
+    },
+    {
+        "name": "Vicolo Pusterla",
+        "lat": 45.4653272,
+        "lon": 8.9196483
+    },
+    {
+        "name": "Vicolo Zari",
+        "lat": 45.4460699,
+        "lon": 8.9261358
+    },
+    {
+        "name": "Vicolo del Ghiaccio",
+        "lat": 45.4659455,
+        "lon": 8.9174813
+    },
+    {
+        "name": "Vicolo della musica",
+        "lat": 45.4687875,
+        "lon": 8.9181084
+    },
+    {
+        "name": "via Eugenio Montale",
+        "lat": 45.4604402,
+        "lon": 8.9414856
+    }
+]

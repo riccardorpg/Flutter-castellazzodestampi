@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:segnalazioni_app/services/api_service.dart';
+import 'package:castellazzodestampi/services/api_service.dart';
 
 /// Blocco `user` come lo manda il server, con il permesso indicato.
 Map<String, dynamic> _user(String reports) => {

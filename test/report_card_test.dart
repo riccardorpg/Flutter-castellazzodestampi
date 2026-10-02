@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:segnalazioni_app/segnalazioni.dart';
+import 'package:castellazzodestampi/segnalazioni.dart';
 
 Map<String, dynamic> _report({
   String typeName = 'Illuminazione pubblica',
